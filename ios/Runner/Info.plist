@@ -34,13 +34,14 @@
             <string>UIInterfaceOrientationLandscapeLeft</string>
             <string>UIInterfaceOrientationLandscapeRight</string>
         </array>
+        <key>UISupportedInterfaceOrientations~ipad</key>
         <array>
             <string>UIInterfaceOrientationPortrait</string>
             <string>UIInterfaceOrientationPortraitUpsideDown</string>
             <string>UIInterfaceOrientationLandscapeLeft</string>
             <string>UIInterfaceOrientationLandscapeRight</string>
         </array>
-        <CADisableMinimumFrameDurationOnPhone/>
+        <key>CADisableMinimumFrameDurationOnPhone</key>
         <true/>
         <key>UIApplicationSupportsIndirectInputEvents</key>
         <true/>
