@@ -125,6 +125,7 @@ class _RootNavigationState extends State<RootNavigation> {
       const SettingsScreen(),
     ];
 
+
     return Scaffold(
       body: IndexedStack(index: _index, children: screens),
       bottomNavigationBar: BottomNavigationBar(
