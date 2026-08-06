@@ -53,11 +53,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadUserName() async {
+    // Priorité au nom local sauvegardé
+    final local = await StorageService.getUserFullName();
+    if (local != null && local.trim().isNotEmpty) {
+      final firstName = local.trim().split(' ').first;
+      if (mounted) setState(() => _userName = firstName);
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     String? name;
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
       name = doc.data()?['fullName'] as String?;
     } catch (_) {
       // Pas bloquant : on retombe sur les infos Firebase Auth ci-dessous.
@@ -65,7 +76,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     name ??= user.displayName;
     name ??= user.email?.split('@').first;
     name ??= 'à toi';
-    final firstName = name.trim().isEmpty ? 'à toi' : name.trim().split(' ').first;
+    final firstName = name.trim().isEmpty
+        ? 'à toi'
+        : name.trim().split(' ').first;
     if (mounted) setState(() => _userName = firstName);
   }
 
@@ -92,7 +105,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _openAddTransaction() async {
     if (_accounts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Crée d\'abord un compte dans l\'onglet Comptes.')),
+        const SnackBar(
+          content: Text('Crée d\'abord un compte dans l\'onglet Comptes.'),
+        ),
       );
       return;
     }
@@ -110,11 +125,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _openTransactionDetail(LedgerTransaction tx, String accountName) async {
+  Future<void> _openTransactionDetail(
+    LedgerTransaction tx,
+    String accountName,
+  ) async {
     final deleted = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => TransactionDetailScreen(transaction: tx, accountName: accountName),
+        builder: (_) =>
+            TransactionDetailScreen(transaction: tx, accountName: accountName),
       ),
     );
     if (deleted == true) _load();
@@ -131,7 +150,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         tween: Tween(begin: 0.0, end: 1.0),
         duration: const Duration(milliseconds: 800),
         curve: Curves.elasticOut,
-        builder: (context, entrance, child) => Transform.scale(scale: entrance, child: child),
+        builder: (context, entrance, child) =>
+            Transform.scale(scale: entrance, child: child),
         child: ScaleTransition(
           scale: _pulseAnimation,
           child: FloatingActionButton(
@@ -145,7 +165,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           // Fond animé, discret : quelques halos qui bougent très lentement
           const Positioned.fill(child: _AnimatedBackdrop()),
           _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.green))
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.green),
+                )
               : RefreshIndicator(
                   color: AppColors.green,
                   backgroundColor: AppColors.card,
@@ -176,12 +198,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.info_outline, color: AppColors.green),
+                                const Icon(
+                                  Icons.info_outline,
+                                  color: AppColors.green,
+                                ),
                                 const SizedBox(width: 12),
                                 const Expanded(
                                   child: Text(
                                     "Aucun compte pour l'instant. Ajoute-en un dans l'onglet Comptes pour commencer à suivre tes finances.",
-                                    style: TextStyle(color: AppColors.textSecondary),
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -191,8 +218,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       else ...[
                         _StaggeredFadeIn(
                           index: 1,
-                          child: const Text('Patrimoine total',
-                              style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                          child: const Text(
+                            'Patrimoine total',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         _StaggeredFadeIn(
@@ -213,13 +245,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ],
                       const SizedBox(height: 20),
-                      ..._accounts.asMap().entries.map((e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _StaggeredFadeIn(
-                              index: 3 + e.key,
-                              child: AccountCard(account: e.value),
-                            ),
-                          )),
+                      ..._accounts.asMap().entries.map(
+                        (e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _StaggeredFadeIn(
+                            index: 3 + e.key,
+                            child: AccountCard(account: e.value),
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       _StaggeredFadeIn(
                         index: 4 + _accounts.length,
@@ -247,37 +281,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       else
                         Card(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 4,
+                            ),
                             child: Column(
-                              children: _transactions.take(10).toList().asMap().entries.map((entry) {
-                                final i = entry.key;
-                                final t = entry.value;
-                                final accountName = _accounts
-                                    .firstWhere(
-                                      (a) => a.id == t.accountId,
-                                      orElse: () => Account(
-                                        id: '',
-                                        name: 'Inconnu',
-                                        type: AccountType.autre,
-                                        balance: 0,
+                              children: _transactions
+                                  .take(10)
+                                  .toList()
+                                  .asMap()
+                                  .entries
+                                  .map((entry) {
+                                    final i = entry.key;
+                                    final t = entry.value;
+                                    final accountName = _accounts
+                                        .firstWhere(
+                                          (a) => a.id == t.accountId,
+                                          orElse: () => Account(
+                                            id: '',
+                                            name: 'Inconnu',
+                                            type: AccountType.autre,
+                                            balance: 0,
+                                          ),
+                                        )
+                                        .name;
+                                    return _StaggeredFadeIn(
+                                      index: 5 + _accounts.length + i,
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          onTap: () => _openTransactionDetail(
+                                            t,
+                                            accountName,
+                                          ),
+                                          child: TransactionTile(
+                                            transaction: t,
+                                            accountName: accountName,
+                                          ),
+                                        ),
                                       ),
-                                    )
-                                    .name;
-                                return _StaggeredFadeIn(
-                                  index: 5 + _accounts.length + i,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
-                                      onTap: () => _openTransactionDetail(t, accountName),
-                                      child: TransactionTile(
-                                        transaction: t,
-                                        accountName: accountName,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
+                                    );
+                                  })
+                                  .toList(),
                             ),
                           ),
                         ),
@@ -301,7 +349,8 @@ class _StaggeredFadeIn extends StatefulWidget {
   State<_StaggeredFadeIn> createState() => _StaggeredFadeInState();
 }
 
-class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerProviderStateMixin {
+class _StaggeredFadeInState extends State<_StaggeredFadeIn>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _fade;
   late final Animation<double> _slideY;
@@ -322,16 +371,19 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerPro
       parent: _controller,
       curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
     );
-    _slideY = Tween<double>(begin: 46, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _slideY = Tween<double>(
+      begin: 46,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     // Léger dépassement (overshoot) pour un effet "pop" au lieu d'un simple zoom.
-    _scale = Tween<double>(begin: 0.72, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-    _rotation = Tween<double>(begin: -0.05, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _scale = Tween<double>(
+      begin: 0.72,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _rotation = Tween<double>(
+      begin: -0.05,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _blur = Tween<double>(begin: 8.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -359,7 +411,10 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerPro
         Widget content = child!;
         if (_blur.value > 0.05) {
           content = ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: _blur.value, sigmaY: _blur.value),
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: _blur.value,
+              sigmaY: _blur.value,
+            ),
             child: content,
           );
         }
@@ -417,29 +472,54 @@ class _AnimatedBackdrop extends StatefulWidget {
   State<_AnimatedBackdrop> createState() => _AnimatedBackdropState();
 }
 
-class _AnimatedBackdropState extends State<_AnimatedBackdrop> with TickerProviderStateMixin {
+class _AnimatedBackdropState extends State<_AnimatedBackdrop>
+    with TickerProviderStateMixin {
   late final List<AnimationController> _controllers;
 
   static final List<_BlobSpec> _specs = [
     _BlobSpec(
-      size: 200, seed: 1, color: AppColors.green.withOpacity(0.16),
-      durationMs: 5200, ampX: 70, ampY: 50, freqY: 1.6,
-      top: -50, left: -60,
+      size: 200,
+      seed: 1,
+      color: AppColors.green.withOpacity(0.16),
+      durationMs: 5200,
+      ampX: 70,
+      ampY: 50,
+      freqY: 1.6,
+      top: -50,
+      left: -60,
     ),
     _BlobSpec(
-      size: 150, seed: 2, color: AppColors.green.withOpacity(0.12),
-      durationMs: 6400, ampX: 55, ampY: 65, freqY: 0.8,
-      top: 100, right: -40,
+      size: 150,
+      seed: 2,
+      color: AppColors.green.withOpacity(0.12),
+      durationMs: 6400,
+      ampX: 55,
+      ampY: 65,
+      freqY: 0.8,
+      top: 100,
+      right: -40,
     ),
     _BlobSpec(
-      size: 230, seed: 3, color: AppColors.green.withOpacity(0.10),
-      durationMs: 7600, ampX: 60, ampY: 45, freqY: 1.3,
-      bottom: -70, left: 0,
+      size: 230,
+      seed: 3,
+      color: AppColors.green.withOpacity(0.10),
+      durationMs: 7600,
+      ampX: 60,
+      ampY: 45,
+      freqY: 1.3,
+      bottom: -70,
+      left: 0,
     ),
     _BlobSpec(
-      size: 130, seed: 4, color: AppColors.green.withOpacity(0.14),
-      durationMs: 4600, ampX: 45, ampY: 55, freqY: 1.9,
-      bottom: 60, right: -20,
+      size: 130,
+      seed: 4,
+      color: AppColors.green.withOpacity(0.14),
+      durationMs: 4600,
+      ampX: 45,
+      ampY: 55,
+      freqY: 1.9,
+      bottom: 60,
+      right: -20,
     ),
   ];
 
@@ -447,10 +527,12 @@ class _AnimatedBackdropState extends State<_AnimatedBackdrop> with TickerProvide
   void initState() {
     super.initState();
     _controllers = _specs
-        .map((s) => AnimationController(
-              vsync: this,
-              duration: Duration(milliseconds: s.durationMs),
-            )..repeat())
+        .map(
+          (s) => AnimationController(
+            vsync: this,
+            duration: Duration(milliseconds: s.durationMs),
+          )..repeat(),
+        )
         .toList();
   }
 
@@ -482,7 +564,11 @@ class _AnimatedBackdropState extends State<_AnimatedBackdrop> with TickerProvide
                 right: spec.right != null ? spec.right! - dx : null,
                 child: Transform.rotate(
                   angle: rotation,
-                  child: _OrganicBlob(size: spec.size, seed: spec.seed, color: spec.color),
+                  child: _OrganicBlob(
+                    size: spec.size,
+                    seed: spec.seed,
+                    color: spec.color,
+                  ),
                 ),
               );
             },
@@ -499,7 +585,11 @@ class _OrganicBlob extends StatelessWidget {
   final double size;
   final int seed;
   final Color color;
-  const _OrganicBlob({required this.size, required this.seed, required this.color});
+  const _OrganicBlob({
+    required this.size,
+    required this.seed,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -533,10 +623,12 @@ class _BlobPainter extends CustomPainter {
     for (int i = 0; i < pointCount; i++) {
       final angle = (i / pointCount) * 2 * math.pi;
       final radiusVariance = baseRadius * (0.7 + rng.nextDouble() * 0.55);
-      points.add(Offset(
-        center.dx + radiusVariance * math.cos(angle),
-        center.dy + radiusVariance * math.sin(angle),
-      ));
+      points.add(
+        Offset(
+          center.dx + radiusVariance * math.cos(angle),
+          center.dy + radiusVariance * math.sin(angle),
+        ),
+      );
     }
 
     final path = Path();
@@ -548,7 +640,10 @@ class _BlobPainter extends CustomPainter {
     for (int i = 0; i < points.length; i++) {
       final current = points[i];
       final next = points[(i + 1) % points.length];
-      final mid = Offset((current.dx + next.dx) / 2, (current.dy + next.dy) / 2);
+      final mid = Offset(
+        (current.dx + next.dx) / 2,
+        (current.dy + next.dy) / 2,
+      );
       path.quadraticBezierTo(current.dx, current.dy, mid.dx, mid.dy);
     }
     path.close();

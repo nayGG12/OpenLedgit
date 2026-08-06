@@ -1,23 +1,25 @@
 import 'dart:convert';
 import 'package:uuid/uuid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/account.dart';
 import '../models/transaction.dart';
 
-/// Service de stockage de secours basé sur de la mémoire vive et du JSON brut
-/// pour éliminer tout blocage lié aux plateformes natives.
+/// Service de stockage persistant utilisant SharedPreferences.
+/// Conserve les données sur l'appareil entre les redémarrages.
 class StorageService {
   static const _uuid = Uuid();
+  static const _accountsKey = 'ol_accounts';
+  static const _transactionsKey = 'ol_transactions';
+  static const _userFullNameKey = 'user_full_name';
 
-  // Stockage en mémoire vive de secours pour garantir zéropanne au démarrage
-  static final Map<String, String> _memoryStore = {};
+  static Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
 
   static Future<void> initDefaultDataIfNeeded() async {
-    // Initialisation immédiate sans bloquer sur le pont natif.
-    // Ne crée aucun compte par défaut : l'utilisateur doit ajouter ses propres comptes.
-    if (!_memoryStore.containsKey('ol_accounts')) {
+    final p = await _prefs();
+    if (!p.containsKey(_accountsKey)) {
       await saveAccounts([]);
     }
-    if (!_memoryStore.containsKey('ol_transactions')) {
+    if (!p.containsKey(_transactionsKey)) {
       await saveTransactions([]);
     }
   }
@@ -25,7 +27,8 @@ class StorageService {
   // ---------- Comptes ----------
 
   static Future<List<Account>> getAccounts() async {
-    final raw = _memoryStore['ol_accounts'];
+    final p = await _prefs();
+    final raw = p.getString(_accountsKey);
     if (raw == null) return [];
     final list = jsonDecode(raw) as List;
     return list
@@ -34,8 +37,9 @@ class StorageService {
   }
 
   static Future<void> saveAccounts(List<Account> accounts) async {
+    final p = await _prefs();
     final raw = jsonEncode(accounts.map((a) => a.toJson()).toList());
-    _memoryStore['ol_accounts'] = raw;
+    await p.setString(_accountsKey, raw);
   }
 
   static Future<void> upsertAccount(Account account) async {
@@ -61,7 +65,8 @@ class StorageService {
   // ---------- Transactions ----------
 
   static Future<List<LedgerTransaction>> getTransactions() async {
-    final raw = _memoryStore['ol_transactions'];
+    final p = await _prefs();
+    final raw = p.getString(_transactionsKey);
     if (raw == null) return [];
     final list = jsonDecode(raw) as List;
     final txs = list
@@ -74,8 +79,9 @@ class StorageService {
   static Future<void> saveTransactions(
     List<LedgerTransaction> transactions,
   ) async {
+    final p = await _prefs();
     final raw = jsonEncode(transactions.map((t) => t.toJson()).toList());
-    _memoryStore['ol_transactions'] = raw;
+    await p.setString(_transactionsKey, raw);
   }
 
   static Future<void> addTransaction(LedgerTransaction tx) async {
@@ -108,7 +114,22 @@ class StorageService {
   static String newId() => _uuid.v4();
 
   static Future<void> wipeAll() async {
-    _memoryStore.clear();
+    final p = await _prefs();
+    await p.remove(_accountsKey);
+    await p.remove(_transactionsKey);
+    await p.remove(_userFullNameKey);
     await initDefaultDataIfNeeded();
+  }
+
+  // ---------- Utilisateur ----------
+
+  static Future<String?> getUserFullName() async {
+    final p = await _prefs();
+    return p.getString(_userFullNameKey);
+  }
+
+  static Future<void> saveUserFullName(String name) async {
+    final p = await _prefs();
+    await p.setString(_userFullNameKey, name);
   }
 }

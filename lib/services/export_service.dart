@@ -28,7 +28,10 @@ class ExportService {
     final file = File('${dir.path}/openledger_backup_${_timestamp()}.json');
     await file.writeAsString(jsonStr);
 
-    await Share.shareXFiles([XFile(file.path)], text: 'Sauvegarde OpenLedger (JSON)');
+    // Utilise XFile.fromData sur iOS si nécessaire, mais le chemin temporaire fonctionne généralement.
+    await Share.shareXFiles([
+      XFile(file.path),
+    ], text: 'Sauvegarde OpenLedger (JSON)');
   }
 
   /// Exporte uniquement les transactions en CSV, lisible dans Excel/LibreOffice/Sheets.
@@ -51,10 +54,14 @@ class ExportService {
 
     final csvStr = const ListToCsvConverter(fieldDelimiter: ';').convert(rows);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/openledger_transactions_${_timestamp()}.csv');
+    final file = File(
+      '${dir.path}/openledger_transactions_${_timestamp()}.csv',
+    );
     await file.writeAsString(csvStr);
 
-    await Share.shareXFiles([XFile(file.path)], text: 'Transactions OpenLedger (CSV)');
+    await Share.shareXFiles([
+      XFile(file.path),
+    ], text: 'Transactions OpenLedger (CSV)');
   }
 
   /// Importe une sauvegarde JSON précédemment exportée et remplace les données locales.
@@ -63,23 +70,37 @@ class ExportService {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
+      withData: true, // s'assure que bytes sont disponibles sur iOS
     );
-    if (result == null || result.files.single.path == null) return false;
+    if (result == null) return false;
 
-    final file = File(result.files.single.path!);
-    final content = await file.readAsString();
-    final data = jsonDecode(content) as Map<String, dynamic>;
+    final picked = result.files.single;
+    String content;
+    try {
+      if (picked.path != null) {
+        final file = File(picked.path!);
+        content = await file.readAsString();
+      } else if (picked.bytes != null) {
+        content = const Utf8Decoder().convert(picked.bytes!);
+      } else {
+        return false;
+      }
+      final data = jsonDecode(content) as Map<String, dynamic>;
 
-    final accounts = (data['accounts'] as List)
-        .map((e) => Account.fromJson(e as Map<String, dynamic>))
-        .toList();
-    final txs = (data['transactions'] as List)
-        .map((e) => LedgerTransaction.fromJson(e as Map<String, dynamic>))
-        .toList();
+      final accounts = (data['accounts'] as List)
+          .map((e) => Account.fromJson(e as Map<String, dynamic>))
+          .toList();
+      final txs = (data['transactions'] as List)
+          .map((e) => LedgerTransaction.fromJson(e as Map<String, dynamic>))
+          .toList();
 
-    await StorageService.saveAccounts(accounts);
-    await StorageService.saveTransactions(txs);
-    return true;
+      await StorageService.saveAccounts(accounts);
+      await StorageService.saveTransactions(txs);
+      return true;
+    } catch (e) {
+      // JSON invalide ou erreur d'écriture → échec de l'import
+      return false;
+    }
   }
 
   static String _timestamp() {

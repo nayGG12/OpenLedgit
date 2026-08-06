@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_theme.dart';
 import '../main.dart';
+import '../services/storage_service.dart';
+import 'collect_name.dart';
 import 'register.dart';
 import 'check.dart';
 
@@ -40,15 +42,13 @@ class _LoginScreenState extends State<LoginScreen>
       curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.15),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _mainController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _mainController,
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // Génération d'animations en cascade pour chaque bloc d'élément (7 blocs)
     _itemFades = List.generate(7, (index) {
@@ -95,9 +95,9 @@ class _LoginScreenState extends State<LoginScreen>
         // Connexion avec Firebase Auth
         UserCredential userCredential = await FirebaseAuth.instance
             .signInWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-        );
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
 
         User? user = userCredential.user;
 
@@ -106,11 +106,20 @@ class _LoginScreenState extends State<LoginScreen>
         if (user != null) {
           // Vérifier si l'email a été validé
           if (user.emailVerified) {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const RootNavigation()),
-              (route) => false,
-            );
+            final localName = await StorageService.getUserFullName();
+            if (localName == null || localName.trim().isEmpty) {
+              // Demander le nom complet avant d'entrer dans l'app
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const CollectNameScreen()),
+              );
+            } else {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const RootNavigation()),
+                (route) => false,
+              );
+            }
           } else {
             // Rediriger vers l'écran de vérification si ce n'est pas fait
             Navigator.push(
@@ -121,7 +130,9 @@ class _LoginScreenState extends State<LoginScreen>
         }
       } on FirebaseAuthException catch (e) {
         String message = 'Une erreur est survenue';
-        if (e.code == 'user-not-found' || e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        if (e.code == 'user-not-found' ||
+            e.code == 'wrong-password' ||
+            e.code == 'invalid-credential') {
           message = 'E-mail ou mot de passe incorrect.';
         } else if (e.code == 'invalid-email') {
           message = 'Format d\'e-mail invalide.';
@@ -131,10 +142,7 @@ class _LoginScreenState extends State<LoginScreen>
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
         );
       } catch (e) {
         if (!mounted) return;
@@ -157,10 +165,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _animatedItem(int index, Widget child) {
     return FadeTransition(
       opacity: _itemFades[index],
-      child: SlideTransition(
-        position: _itemSlides[index],
-        child: child,
-      ),
+      child: SlideTransition(position: _itemSlides[index], child: child),
     );
   }
 
@@ -172,7 +177,10 @@ class _LoginScreenState extends State<LoginScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -184,7 +192,10 @@ class _LoginScreenState extends State<LoginScreen>
             child: LayoutBuilder(
               builder: (context, constraints) {
                 return SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 12.0,
+                  ),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       minHeight: constraints.maxHeight,
@@ -227,10 +238,15 @@ class _LoginScreenState extends State<LoginScreen>
                               TextFormField(
                                 controller: _emailController,
                                 keyboardType: TextInputType.emailAddress,
-                                style: const TextStyle(color: AppColors.textPrimary),
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                ),
                                 decoration: const InputDecoration(
                                   labelText: 'Adresse email',
-                                  prefixIcon: Icon(Icons.email_outlined, color: AppColors.green),
+                                  prefixIcon: Icon(
+                                    Icons.email_outlined,
+                                    color: AppColors.green,
+                                  ),
                                 ),
                                 validator: (v) {
                                   if (v == null || v.trim().isEmpty) {
@@ -247,10 +263,15 @@ class _LoginScreenState extends State<LoginScreen>
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: true,
-                                style: const TextStyle(color: AppColors.textPrimary),
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                ),
                                 decoration: const InputDecoration(
                                   labelText: 'Mot de passe',
-                                  prefixIcon: Icon(Icons.lock_outline, color: AppColors.green),
+                                  prefixIcon: Icon(
+                                    Icons.lock_outline,
+                                    color: AppColors.green,
+                                  ),
                                 ),
                                 validator: (v) {
                                   if (v == null || v.isEmpty) {
@@ -322,7 +343,9 @@ class _LoginScreenState extends State<LoginScreen>
                                   onPressed: () {
                                     Navigator.pushReplacement(
                                       context,
-                                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                                      MaterialPageRoute(
+                                        builder: (_) => const RegisterScreen(),
+                                      ),
                                     );
                                   },
                                   child: const Text(

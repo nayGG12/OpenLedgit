@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'account/welcome.dart';
+import 'account/collect_name.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
@@ -14,9 +15,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. Initialisation de Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Initialisation des données locales
   await StorageService.initDefaultDataIfNeeded();
@@ -51,29 +50,58 @@ class OpenLedgerApp extends StatelessWidget {
       // la recherche récursive de Hero à chaque navigation (surtout avec l'IndexedStack
       // de RootNavigation qui garde tous les onglets montés) pouvait geler/planter l'app.
       builder: (context, child) => HeroControllerScope.none(child: child!),
-      // On utilise un StreamBuilder pour vérifier si l'utilisateur est déjà connecté en persistance locale
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          // Pendant que Firebase récupère l'état de la session locale
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              backgroundColor: AppColors.background,
-              body: Center(
-                child: CircularProgressIndicator(color: AppColors.green),
-              ),
-            );
-          }
+      // AuthGate décide de la première page en combinant l'état Firebase et le nom local
+      home: const AuthGate(),
+    );
+  }
+}
 
-          // Si un utilisateur est connecté et que son email est vérifié, on l'envoie directement sur la navigation principale
-          if (snapshot.hasData && snapshot.data!.emailVerified) {
+/// Détermine la page de démarrage selon l'auth Firebase et la présence du nom local.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.green),
+            ),
+          );
+        }
+
+        final user = snapshot.data;
+
+        // Si pas connecté, on affiche Welcome
+        if (user == null) return const WelcomeScreen();
+
+        // Si connecté mais email non vérifié, afficher l'écran de bienvenue (login flow gère la vérif)
+        if (!user.emailVerified) return const WelcomeScreen();
+
+        // Utilisateur connecté et email vérifié -> vérifier nom local
+        return FutureBuilder<String?>(
+          future: StorageService.getUserFullName(),
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                backgroundColor: AppColors.background,
+                body: Center(
+                  child: CircularProgressIndicator(color: AppColors.green),
+                ),
+              );
+            }
+            final localName = snap.data;
+            if (localName == null || localName.trim().isEmpty) {
+              return const CollectNameScreen();
+            }
             return const RootNavigation();
-          }
-
-          // Sinon, on affiche l'écran de bienvenue / connexion d'origine
-          return const WelcomeScreen();
-        },
-      ),
+          },
+        );
+      },
     );
   }
 }
@@ -125,7 +153,6 @@ class _RootNavigationState extends State<RootNavigation> {
       const SettingsScreen(),
     ];
 
-
     return Scaffold(
       body: IndexedStack(index: _index, children: screens),
       bottomNavigationBar: BottomNavigationBar(
@@ -133,14 +160,26 @@ class _RootNavigationState extends State<RootNavigation> {
         onTap: _onTap,
         items: [
           _navItem(Icons.home_outlined, Icons.home, _titles[0]),
-          _navItem(Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, _titles[1]),
+          _navItem(
+            Icons.account_balance_wallet_outlined,
+            Icons.account_balance_wallet,
+            _titles[1],
+          ),
           _navItem(Icons.settings_outlined, Icons.settings, _titles[2]),
         ],
       ),
     );
   }
 
-  BottomNavigationBarItem _navItem(IconData outline, IconData filled, String label) {
-    return BottomNavigationBarItem(icon: Icon(outline), activeIcon: Icon(filled), label: label);
+  BottomNavigationBarItem _navItem(
+    IconData outline,
+    IconData filled,
+    String label,
+  ) {
+    return BottomNavigationBarItem(
+      icon: Icon(outline),
+      activeIcon: Icon(filled),
+      label: label,
+    );
   }
 }
