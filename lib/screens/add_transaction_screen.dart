@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/account.dart';
 import '../models/transaction.dart';
 import '../services/storage_service.dart';
@@ -18,7 +21,25 @@ const List<String> kCategories = [
 
 class AddTransactionScreen extends StatefulWidget {
   final List<Account> accounts;
-  const AddTransactionScreen({super.key, required this.accounts});
+  final String? initialTitle;
+  final double? initialAmount;
+  final String? initialCategory;
+  final DateTime? initialDate;
+  final String? initialNote;
+  final String? initialLocation;
+  final String? initialReceiptImagePath;
+
+  const AddTransactionScreen({
+    super.key,
+    required this.accounts,
+    this.initialTitle,
+    this.initialAmount,
+    this.initialCategory,
+    this.initialDate,
+    this.initialNote,
+    this.initialLocation,
+    this.initialReceiptImagePath,
+  });
 
   @override
   State<AddTransactionScreen> createState() => _AddTransactionScreenState();
@@ -34,13 +55,33 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   late String _category;
   Account? _selectedAccount;
   DateTime _date = DateTime.now();
+  String? _receiptImagePath;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    // Correction : on évite le crash "Bad state: No element" si la liste est vide.
-    _selectedAccount = widget.accounts.isNotEmpty ? widget.accounts.first : null;
-    _category = kCategories.last; // "Autre" par défaut
+    _selectedAccount = widget.accounts.isNotEmpty
+        ? widget.accounts.first
+        : null;
+    _category = widget.initialCategory ?? kCategories.last;
+    _receiptImagePath = widget.initialReceiptImagePath;
+    if (widget.initialTitle != null) {
+      _titleController.text = widget.initialTitle!;
+    }
+    if (widget.initialAmount != null) {
+      final amount = widget.initialAmount!;
+      _isIncome = amount >= 0;
+      _amountController.text = amount.abs().toStringAsFixed(2);
+    }
+    if (widget.initialDate != null) {
+      _date = widget.initialDate!;
+    }
+    if (widget.initialNote != null) {
+      _noteController.text = widget.initialNote!;
+    } else if (widget.initialLocation != null) {
+      _noteController.text = 'Ville : ${widget.initialLocation!}';
+    }
   }
 
   @override
@@ -70,12 +111,81 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  Future<String> _copyReceiptFile(File source, String name) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final extension = name.contains('.')
+        ? name.substring(name.lastIndexOf('.'))
+        : '.jpg';
+    final destination = File(
+      '${directory.path}/${StorageService.newId()}$extension',
+    );
+    return (await source.copy(destination.path)).path;
+  }
+
+  Future<void> _setReceiptImage(XFile? file) async {
+    if (file == null) return;
+    try {
+      final savedPath = await _copyReceiptFile(File(file.path), file.name);
+      if (!mounted) return;
+      if (_receiptImagePath != null && _receiptImagePath != savedPath) {
+        final oldFile = File(_receiptImagePath!);
+        if (await oldFile.exists()) {
+          await oldFile.delete();
+        }
+      }
+      setState(() {
+        _receiptImagePath = savedPath;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible d\'ajouter la photo du reçu.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickReceiptFromGallery() async {
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    await _setReceiptImage(picked);
+  }
+
+  Future<void> _captureReceiptPhoto() async {
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+    );
+    await _setReceiptImage(picked);
+  }
+
+  Future<void> _clearReceipt() async {
+    if (_receiptImagePath == null) return;
+    final file = File(_receiptImagePath!);
+    if (await file.exists()) {
+      await file.delete();
+    }
+    setState(() {
+      _receiptImagePath = null;
+    });
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedAccount == null) return;
 
     final rawAmount = double.parse(_amountController.text.replaceAll(',', '.'));
     final amount = _isIncome ? rawAmount.abs() : -rawAmount.abs();
+
+    final noteText = _noteController.text.trim();
+    final note = noteText.isEmpty && widget.initialLocation != null
+        ? 'Ville : ${widget.initialLocation!}'
+        : noteText.isEmpty
+        ? null
+        : noteText;
 
     final tx = LedgerTransaction(
       id: StorageService.newId(),
@@ -84,7 +194,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       category: _category,
       accountId: _selectedAccount!.id,
       date: _date,
-      note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+      note: note,
+      receiptImagePath: _receiptImagePath,
     );
 
     await StorageService.addTransaction(tx);
@@ -104,8 +215,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.account_balance_wallet_outlined,
-                    size: 48, color: AppColors.textSecondary),
+                const Icon(
+                  Icons.account_balance_wallet_outlined,
+                  size: 48,
+                  color: AppColors.textSecondary,
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   "Aucun compte disponible.\nCrée d'abord un compte avant d'ajouter une transaction.",
@@ -168,8 +282,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               child: TextFormField(
                 controller: _titleController,
                 style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(labelText: 'Titre (ex: Restaurant, Salaire...)'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Titre requis' : null,
+                decoration: const InputDecoration(
+                  labelText: 'Titre (ex: Restaurant, Salaire...)',
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Titre requis' : null,
               ),
             ),
             const SizedBox(height: 14),
@@ -178,7 +295,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               child: TextFormField(
                 controller: _amountController,
                 style: const TextStyle(color: AppColors.textPrimary),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(labelText: 'Montant (€)'),
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Montant requis';
@@ -211,7 +330,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 style: const TextStyle(color: AppColors.textPrimary),
                 decoration: const InputDecoration(labelText: 'Compte'),
                 items: widget.accounts
-                    .map((a) => DropdownMenuItem(value: a, child: Text('${a.type.name}  ${a.name}')))
+                    .map(
+                      (a) => DropdownMenuItem(
+                        value: a,
+                        child: Text('${a.type.name}  ${a.name}'),
+                      ),
+                    )
                     .toList(),
                 onChanged: (v) => setState(() => _selectedAccount = v),
               ),
@@ -221,8 +345,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               index: 5,
               child: ListTile(
                 tileColor: AppColors.card,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                leading: const Icon(Icons.calendar_today_outlined, color: AppColors.green),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                leading: const Icon(
+                  Icons.calendar_today_outlined,
+                  color: AppColors.green,
+                ),
                 title: Text(
                   '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
                   style: const TextStyle(color: AppColors.textPrimary),
@@ -236,13 +365,96 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               child: TextFormField(
                 controller: _noteController,
                 style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(labelText: 'Note (optionnel)'),
+                decoration: const InputDecoration(
+                  labelText: 'Note (optionnel)',
+                  hintText: 'Par exemple Ville, référence du ticket...',
+                ),
                 maxLines: 2,
+              ),
+            ),
+            const SizedBox(height: 14),
+            _StaggeredFadeIn(
+              index: 7,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Reçu',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_receiptImagePath != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.file(
+                          File(_receiptImagePath!),
+                          fit: BoxFit.cover,
+                          height: 180,
+                          width: double.infinity,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _clearReceipt,
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Supprimer'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _captureReceiptPhoto,
+                              icon: const Icon(Icons.camera_alt_outlined),
+                              label: const Text('Prendre une photo'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      const Text(
+                        'Ajoute une photo de ton ticket pour garder une trace visuelle.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _pickReceiptFromGallery,
+                              icon: const Icon(Icons.photo_library_outlined),
+                              label: const Text('Importer'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _captureReceiptPhoto,
+                              icon: const Icon(Icons.camera_alt_outlined),
+                              label: const Text('Photo'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 28),
             _StaggeredFadeIn(
-              index: 7,
+              index: 8,
               child: ElevatedButton(
                 onPressed: _save,
                 child: const Text('Enregistrer'),
@@ -276,7 +488,7 @@ class _ToggleButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.15) : Colors.transparent,
+          color: selected ? color.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: selected ? color : Colors.transparent),
         ),
@@ -304,7 +516,8 @@ class _StaggeredFadeIn extends StatefulWidget {
   State<_StaggeredFadeIn> createState() => _StaggeredFadeInState();
 }
 
-class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerProviderStateMixin {
+class _StaggeredFadeInState extends State<_StaggeredFadeIn>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _fade;
   late final Animation<double> _slideY;
@@ -323,15 +536,18 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerPro
       parent: _controller,
       curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
     );
-    _slideY = Tween<double>(begin: 46, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-    _scale = Tween<double>(begin: 0.72, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-    _rotation = Tween<double>(begin: -0.05, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _slideY = Tween<double>(
+      begin: 46,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    _scale = Tween<double>(
+      begin: 0.72,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _rotation = Tween<double>(
+      begin: -0.05,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _blur = Tween<double>(begin: 8.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -359,7 +575,10 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerPro
         Widget content = child!;
         if (_blur.value > 0.05) {
           content = ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: _blur.value, sigmaY: _blur.value),
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: _blur.value,
+              sigmaY: _blur.value,
+            ),
             child: content,
           );
         }

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -16,7 +17,8 @@ class TransactionDetailScreen extends StatefulWidget {
   });
 
   @override
-  State<TransactionDetailScreen> createState() => _TransactionDetailScreenState();
+  State<TransactionDetailScreen> createState() =>
+      _TransactionDetailScreenState();
 }
 
 class _TransactionDetailScreenState extends State<TransactionDetailScreen>
@@ -29,11 +31,27 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
   bool _deleting = false;
 
   static const List<String> _days = [
-    'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
+    'Lundi',
+    'Mardi',
+    'Mercredi',
+    'Jeudi',
+    'Vendredi',
+    'Samedi',
+    'Dimanche',
   ];
   static const List<String> _months = [
-    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+    'janvier',
+    'février',
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    'août',
+    'septembre',
+    'octobre',
+    'novembre',
+    'décembre',
   ];
 
   @override
@@ -47,18 +65,20 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
       parent: _controller,
       curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
     );
-    _scale = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
+    _scale = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
     _blur = Tween<double>(begin: 10.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
       ),
     );
-    _rotation = Tween<double>(begin: -0.03, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _rotation = Tween<double>(
+      begin: -0.03,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _controller.forward();
   }
 
@@ -74,22 +94,55 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
     return '$day ${d.day} $month ${d.year}';
   }
 
+  Future<void> _openReceipt() async {
+    if (widget.transaction.receiptImagePath == null) return;
+    final file = File(widget.transaction.receiptImagePath!);
+    if (!await file.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image de reçu introuvable.')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Reçu')),
+          backgroundColor: AppColors.background,
+          body: Center(child: InteractiveViewer(child: Image.file(file))),
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmDelete() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.card,
-        title: const Text('Supprimer cette transaction ?',
-            style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          'Supprimer cette transaction ?',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: Text(
           widget.transaction.title,
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer', style: TextStyle(color: AppColors.red)),
+            child: const Text(
+              'Supprimer',
+              style: TextStyle(color: AppColors.red),
+            ),
           ),
         ],
       ),
@@ -123,7 +176,10 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
             Widget content = child!;
             if (_blur.value > 0.05) {
               content = ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(sigmaX: _blur.value, sigmaY: _blur.value),
+                imageFilter: ui.ImageFilter.blur(
+                  sigmaX: _blur.value,
+                  sigmaY: _blur.value,
+                ),
                 child: content,
               );
             }
@@ -145,19 +201,19 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                     tween: Tween(begin: 0.4, end: 1.0),
                     duration: const Duration(milliseconds: 700),
                     curve: Curves.elasticOut,
-                    builder: (context, value, child) => Transform.scale(
-                      scale: value,
-                      child: child,
-                    ),
+                    builder: (context, value, child) =>
+                        Transform.scale(scale: value, child: child),
                     child: Container(
                       width: 84,
                       height: 84,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
+                        color: AppColors.green.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        isIncome ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                        isIncome
+                            ? Icons.arrow_downward_rounded
+                            : Icons.arrow_upward_rounded,
                         color: color,
                         size: 38,
                       ),
@@ -193,34 +249,81 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                   ),
                 ),
                 const SizedBox(height: 32),
-                _DetailCard(children: [
-                  _StaggeredFadeIn(
-                    index: 0,
-                    child: _DetailRow(icon: Icons.category_outlined, label: 'Catégorie', value: tx.category),
-                  ),
-                  _StaggeredFadeIn(
-                    index: 1,
-                    child: _DetailRow(
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: 'Compte',
-                      value: widget.accountName,
-                    ),
-                  ),
-                  _StaggeredFadeIn(
-                    index: 2,
-                    child: _DetailRow(
-                      icon: Icons.calendar_today_outlined,
-                      label: 'Date',
-                      value: _formatDate(tx.date),
-                    ),
-                  ),
-                  if (tx.note != null && tx.note!.isNotEmpty)
+                _DetailCard(
+                  children: [
                     _StaggeredFadeIn(
-                      index: 3,
-                      child: _DetailRow(icon: Icons.notes_outlined, label: 'Note', value: tx.note!),
+                      index: 0,
+                      child: _DetailRow(
+                        icon: Icons.category_outlined,
+                        label: 'Catégorie',
+                        value: tx.category,
+                      ),
                     ),
-                ]),
-                const SizedBox(height: 40),
+                    _StaggeredFadeIn(
+                      index: 1,
+                      child: _DetailRow(
+                        icon: Icons.account_balance_wallet_outlined,
+                        label: 'Compte',
+                        value: widget.accountName,
+                      ),
+                    ),
+                    _StaggeredFadeIn(
+                      index: 2,
+                      child: _DetailRow(
+                        icon: Icons.calendar_today_outlined,
+                        label: 'Date',
+                        value: _formatDate(tx.date),
+                      ),
+                    ),
+                    if (tx.note != null && tx.note!.isNotEmpty)
+                      _StaggeredFadeIn(
+                        index: 3,
+                        child: _DetailRow(
+                          icon: Icons.notes_outlined,
+                          label: 'Note',
+                          value: tx.note!,
+                        ),
+                      ),
+                  ],
+                ),
+                if (tx.receiptImagePath != null) ...[
+                  const SizedBox(height: 20),
+                  _StaggeredFadeIn(
+                    index: 4,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Reçu',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.file(
+                            File(tx.receiptImagePath!),
+                            fit: BoxFit.cover,
+                            height: 220,
+                            width: double.infinity,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 52,
+                          child: ElevatedButton.icon(
+                            onPressed: _openReceipt,
+                            icon: const Icon(Icons.open_in_full),
+                            label: const Text('Ouvrir le reçu'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
                 _StaggeredFadeIn(
                   index: 4,
                   child: SizedBox(
@@ -231,16 +334,32 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.red),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.red,
+                              ),
                             )
-                          : const Icon(Icons.delete_outline, color: AppColors.red),
+                          : const Icon(
+                              Icons.delete_outline,
+                              color: AppColors.red,
+                            ),
                       label: Text(
-                        _deleting ? 'Suppression...' : 'Supprimer la transaction',
-                        style: const TextStyle(color: AppColors.red, fontWeight: FontWeight.w600),
+                        _deleting
+                            ? 'Suppression...'
+                            : 'Supprimer la transaction',
+                        style: const TextStyle(
+                          color: AppColors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.red, width: 1.5),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        side: const BorderSide(
+                          color: AppColors.red,
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
                   ),
@@ -282,7 +401,11 @@ class _DetailRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _DetailRow({required this.icon, required this.label, required this.value});
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -298,7 +421,10 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -318,7 +444,8 @@ class _StaggeredFadeIn extends StatefulWidget {
   State<_StaggeredFadeIn> createState() => _StaggeredFadeInState();
 }
 
-class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerProviderStateMixin {
+class _StaggeredFadeInState extends State<_StaggeredFadeIn>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _fade;
   late final Animation<double> _slideY;
@@ -337,15 +464,18 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerPro
       parent: _controller,
       curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
     );
-    _slideY = Tween<double>(begin: 46, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-    _scale = Tween<double>(begin: 0.72, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
-    _rotation = Tween<double>(begin: -0.05, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _slideY = Tween<double>(
+      begin: 46,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    _scale = Tween<double>(
+      begin: 0.72,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _rotation = Tween<double>(
+      begin: -0.05,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _blur = Tween<double>(begin: 8.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
@@ -373,7 +503,10 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn> with SingleTickerPro
         Widget content = child!;
         if (_blur.value > 0.05) {
           content = ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(sigmaX: _blur.value, sigmaY: _blur.value),
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: _blur.value,
+              sigmaY: _blur.value,
+            ),
             child: content,
           );
         }

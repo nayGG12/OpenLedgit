@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'package:uuid/uuid.dart';
+import 'dart:io';
+import 'package:uuid/Uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/account.dart';
 import '../models/transaction.dart';
@@ -57,9 +58,20 @@ class StorageService {
     final accounts = await getAccounts();
     accounts.removeWhere((a) => a.id == accountId);
     await saveAccounts(accounts);
+
     final txs = await getTransactions();
+    final removed = txs.where((t) => t.accountId == accountId).toList();
     txs.removeWhere((t) => t.accountId == accountId);
     await saveTransactions(txs);
+
+    for (final tx in removed) {
+      if (tx.receiptImagePath != null) {
+        final file = File(tx.receiptImagePath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+    }
   }
 
   // ---------- Transactions ----------
@@ -108,6 +120,13 @@ class StorageService {
     if (idx >= 0) {
       accounts[idx].balance -= tx.amount;
       await saveAccounts(accounts);
+    }
+
+    if (tx.receiptImagePath != null) {
+      final file = File(tx.receiptImagePath!);
+      if (await file.exists()) {
+        await file.delete();
+      }
     }
   }
 

@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../widgets/account_card.dart';
 import '../widgets/transaction_tile.dart';
 import 'add_transaction_screen.dart';
+import 'scan_ticket_screen.dart';
 import 'transaction_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -123,6 +124,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (e) {
       debugPrint('Erreur lors de l\'ouverture de l\'écran d\'ajout : $e');
     }
+  }
+
+  Future<void> _openScanTicket() async {
+    if (_accounts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Crée d\'abord un compte dans l\'onglet Comptes.'),
+        ),
+      );
+      return;
+    }
+
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => ScanTicketScreen(accounts: _accounts)),
+    );
+    if (added == true) _load();
   }
 
   Future<void> _openTransactionDetail(
@@ -244,6 +262,70 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 20),
+                      _StaggeredFadeIn(
+                        index: 3,
+                        child: GestureDetector(
+                          onTap: _openScanTicket,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Row(
+                              children: const [
+                                Icon(
+                                  Icons.qr_code_scanner_outlined,
+                                  color: AppColors.green,
+                                  size: 28,
+                                ),
+                                SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    'Scanner un ticket pour pré-remplir une transaction',
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: AppColors.textSecondary,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _StaggeredFadeIn(
+                        index: 4,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: const EdgeInsets.all(18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Résumé mensuel',
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _MonthlyChart(transactions: _transactions),
+                            ],
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 20),
                       ..._accounts.asMap().entries.map(
                         (e) => Padding(
@@ -430,6 +512,116 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn>
         );
       },
       child: widget.child,
+    );
+  }
+}
+
+class _MonthlyChart extends StatelessWidget {
+  final List<LedgerTransaction> transactions;
+
+  const _MonthlyChart({required this.transactions});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final monthlyTransactions = transactions
+        .where((tx) => !tx.date.isBefore(startOfMonth))
+        .toList();
+    final income = monthlyTransactions
+        .where((tx) => tx.amount >= 0)
+        .fold(0.0, (sum, tx) => sum + tx.amount);
+    final expense = monthlyTransactions
+        .where((tx) => tx.amount < 0)
+        .fold(0.0, (sum, tx) => sum + tx.amount.abs());
+    final total = income + expense;
+    final incomeRatio = total <= 0 ? 0.0 : (income / total).clamp(0.0, 1.0);
+    final expenseRatio = total <= 0 ? 0.0 : (expense / total).clamp(0.0, 1.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Revenus',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            Text(
+              '${income.toStringAsFixed(2)} €',
+              style: const TextStyle(color: AppColors.green),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Dépenses',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            Text(
+              '${expense.toStringAsFixed(2)} €',
+              style: const TextStyle(color: AppColors.red),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          height: 12,
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: (expenseRatio * 100).round(),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.red,
+                    borderRadius: BorderRadius.horizontal(
+                      left: Radius.circular(6),
+                      right: Radius.circular(expenseRatio == 1 ? 6 : 0),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: (incomeRatio * 100).round(),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.green,
+                    borderRadius: BorderRadius.horizontal(
+                      right: Radius.circular(6),
+                      left: Radius.circular(incomeRatio == 1 ? 6 : 0),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Solde net',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            Text(
+              '${(income - expense).toStringAsFixed(2)} €',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
