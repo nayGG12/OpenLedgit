@@ -3,7 +3,7 @@ name: Build iOS IPA
 on:
   push:
     branches:
-      - main  # Le build se lancera quand tu pousseras sur la branche main
+      - main
 
 jobs:
   build-ios:
@@ -32,5 +32,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KLOOZ-app-ios
+          name: OpenLedger-ios
           path: app.ipa
