@@ -1,0 +1,145 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'firebase_options.dart';
+import 'account/welcome.dart';
+import 'screens/accounts_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/settings_screen.dart';
+import 'services/storage_service.dart';
+import 'theme/app_theme.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. Initialisation de Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Initialisation des données locales
+  await StorageService.initDefaultDataIfNeeded();
+
+  // 2. Bloquer l'orientation en mode portrait uniquement sur toute l'application
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  runApp(const OpenLedgerApp());
+}
+
+class OpenLedgerApp extends StatelessWidget {
+  const OpenLedgerApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'OpenLedger',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.dark.copyWith(
+        // 3. Supprimer les animations de transition de page par défaut sur iOS (les rendre "brutes" sans effet de glissement)
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.iOS: _NoAnimationPageTransitionsBuilder(),
+            TargetPlatform.android: _NoAnimationPageTransitionsBuilder(),
+          },
+        ),
+      ),
+      // Désactive le HeroController global : sans widget Hero explicite dans l'app,
+      // la recherche récursive de Hero à chaque navigation (surtout avec l'IndexedStack
+      // de RootNavigation qui garde tous les onglets montés) pouvait geler/planter l'app.
+      builder: (context, child) => HeroControllerScope.none(child: child!),
+      // On utilise un StreamBuilder pour vérifier si l'utilisateur est déjà connecté en persistance locale
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // Pendant que Firebase récupère l'état de la session locale
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              backgroundColor: AppColors.background,
+              body: Center(
+                child: CircularProgressIndicator(color: AppColors.green),
+              ),
+            );
+          }
+
+          // Si un utilisateur est connecté et que son email est vérifié, on l'envoie directement sur la navigation principale
+          if (snapshot.hasData && snapshot.data!.emailVerified) {
+            return const RootNavigation();
+          }
+
+          // Sinon, on affiche l'écran de bienvenue / connexion d'origine
+          return const WelcomeScreen();
+        },
+      ),
+    );
+  }
+}
+
+// Classe personnalisée pour désactiver l'animation de transition de page
+class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _NoAnimationPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    // Retourne l'enfant directement sans appliquer d'animation de glissement
+    return child;
+  }
+}
+
+class RootNavigation extends StatefulWidget {
+  const RootNavigation({super.key});
+
+  @override
+  State<RootNavigation> createState() => _RootNavigationState();
+}
+
+class _RootNavigationState extends State<RootNavigation> {
+  int _index = 0;
+
+  // Clé pour forcer le rechargement de l'écran d'accueil quand on y revient.
+  Key _homeKey = UniqueKey();
+
+  final List<String> _titles = ['Accueil', 'Comptes', 'Paramètres'];
+
+  void _onTap(int i) {
+    setState(() {
+      if (i == 0 && _index != 0) _homeKey = UniqueKey();
+      _index = i;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      HomeScreen(key: _homeKey),
+      const AccountsScreen(),
+      const SettingsScreen(),
+    ];
+
+    return Scaffold(
+      body: IndexedStack(index: _index, children: screens),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _index,
+        onTap: _onTap,
+        items: [
+          _navItem(Icons.home_outlined, Icons.home, _titles[0]),
+          _navItem(Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, _titles[1]),
+          _navItem(Icons.settings_outlined, Icons.settings, _titles[2]),
+        ],
+      ),
+    );
+  }
+
+  BottomNavigationBarItem _navItem(IconData outline, IconData filled, String label) {
+    return BottomNavigationBarItem(icon: Icon(outline), activeIcon: Icon(filled), label: label);
+  }
+}
