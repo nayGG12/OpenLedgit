@@ -53,7 +53,6 @@ class OpenLedgerApp extends StatelessWidget {
       supportedLocales: const [Locale('fr', 'FR')],
       locale: const Locale('fr', 'FR'),
       theme: AppTheme.dark.copyWith(
-        // 3. Supprimer les animations de transition de page par défaut sur iOS (les rendre "brutes" sans effet de glissement)
         pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
             TargetPlatform.iOS: _NoAnimationPageTransitionsBuilder(),
@@ -61,11 +60,7 @@ class OpenLedgerApp extends StatelessWidget {
           },
         ),
       ),
-      // Désactive le HeroController global : sans widget Hero explicite dans l'app,
-      // la recherche récursive de Hero à chaque navigation (surtout avec l'IndexedStack
-      // de RootNavigation qui garde tous les onglets montés) pouvait geler/planter l'app.
       builder: (context, child) => HeroControllerScope.none(child: child!),
-      // AuthGate décide de la première page en combinant l'état Firebase et le nom local
       home: const AuthGate(),
     );
   }
@@ -89,7 +84,7 @@ class AuthGate extends StatelessWidget {
         // Si pas connecté, on affiche Welcome
         if (user == null) return const WelcomeScreen();
 
-        // Si connecté mais email non vérifié, afficher l'écran de bienvenue (login flow gère la vérif)
+        // Si connecté mais email non vérifié, afficher l'écran de bienvenue
         if (!user.emailVerified) return const WelcomeScreen();
 
         // Utilisateur connecté et email vérifié -> vérifier nom local
@@ -123,7 +118,6 @@ class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    // Retourne l'enfant directement sans appliquer d'animation de glissement
     return child;
   }
 }
@@ -137,8 +131,6 @@ class RootNavigation extends StatefulWidget {
 
 class _RootNavigationState extends State<RootNavigation> {
   int _index = 0;
-
-  // Clé pour forcer le rechargement de l'écran d'accueil quand on y revient.
   Key _homeKey = UniqueKey();
 
   final List<String> _titles = ['Accueil', 'Comptes', 'Paramètres'];
