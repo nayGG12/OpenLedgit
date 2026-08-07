@@ -19,6 +19,7 @@ class LedgerTransaction {
   String accountId;
   DateTime date;
   String? note;
+  String? location;
   String? receiptImagePath;
 
   LedgerTransaction({
@@ -29,6 +30,7 @@ class LedgerTransaction {
     required this.accountId,
     required this.date,
     this.note,
+    this.location,
     this.receiptImagePath,
   });
 
@@ -42,6 +44,7 @@ class LedgerTransaction {
     'accountId': accountId,
     'date': date.toIso8601String(),
     'note': note,
+    'location': location,
     'receiptImagePath': receiptImagePath,
   };
 
@@ -54,6 +57,7 @@ class LedgerTransaction {
         accountId: json['accountId'] as String,
         date: DateTime.parse(json['date'] as String),
         note: json['note'] as String?,
+        location: json['location'] as String?,
         receiptImagePath: json['receiptImagePath'] as String?,
       );
 }

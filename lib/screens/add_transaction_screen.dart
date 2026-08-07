@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -43,12 +42,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   final _titleController = TextEditingController();
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
+  final _locationController = TextEditingController();
 
   bool _isIncome = false;
   late String _category;
   Account? _selectedAccount;
   DateTime _date = DateTime.now();
   String? _receiptImagePath;
+  bool _isPickingImage = false;
   final ImagePicker _imagePicker = ImagePicker();
 
   @override
@@ -67,6 +68,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       _category = transaction.category;
       _date = transaction.date;
       _noteController.text = transaction.note ?? '';
+      _locationController.text = transaction.location ?? '';
       _receiptImagePath = transaction.receiptImagePath;
       _selectedAccount = widget.accounts.firstWhere(
         (a) => a.id == transaction.accountId,
@@ -86,8 +88,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       }
       if (widget.initialNote != null) {
         _noteController.text = widget.initialNote!;
-      } else if (widget.initialLocation != null) {
-        _noteController.text = 'Ville : ${widget.initialLocation!}';
+      }
+      if (widget.initialLocation != null) {
+        _locationController.text = widget.initialLocation!;
       }
     }
   }
@@ -97,6 +100,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     _titleController.dispose();
     _amountController.dispose();
     _noteController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -213,19 +217,88 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   }
 
   Future<void> _pickReceiptFromGallery() async {
-    final picked = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-    );
-    await _setReceiptImage(picked);
+    if (_isPickingImage) return;
+    _isPickingImage = true;
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+      await _setReceiptImage(picked);
+    } finally {
+      _isPickingImage = false;
+    }
   }
 
   Future<void> _captureReceiptPhoto() async {
-    final picked = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85,
+    if (_isPickingImage) return;
+    _isPickingImage = true;
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      await _setReceiptImage(picked);
+    } finally {
+      _isPickingImage = false;
+    }
+  }
+
+  Future<void> _showReceiptPicker() async {
+    final source = await showModalBottomSheet<ImageSource?>(
+      context: context,
+      backgroundColor: AppColors.card,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Ajouter un reçu',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined,
+                  color: AppColors.green),
+              title: const Text(
+                'Prendre une photo',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.photo_library_outlined, color: AppColors.green),
+              title: const Text(
+                'Importer depuis la galerie',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
-    await _setReceiptImage(picked);
+    if (source == ImageSource.camera) {
+      await _captureReceiptPhoto();
+    } else if (source == ImageSource.gallery) {
+      await _pickReceiptFromGallery();
+    }
   }
 
   Future<void> _clearReceipt() async {
@@ -247,11 +320,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     final amount = _isIncome ? rawAmount.abs() : -rawAmount.abs();
 
     final noteText = _noteController.text.trim();
-    final note = noteText.isEmpty && widget.initialLocation != null
-        ? 'Ville : ${widget.initialLocation!}'
-        : noteText.isEmpty
-        ? null
-        : noteText;
+    final note = noteText.isEmpty ? null : noteText;
+
+    final locationText = _locationController.text.trim();
+    final location = locationText.isEmpty ? null : locationText;
 
     final tx = LedgerTransaction(
       id: widget.initialTransaction?.id ?? StorageService.newId(),
@@ -261,6 +333,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       accountId: _selectedAccount!.id,
       date: _date,
       note: note,
+      location: location,
       receiptImagePath: _receiptImagePath,
     );
 
@@ -315,6 +388,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               ? 'Nouvelle transaction'
               : 'Modifier la transaction',
         ),
+        actions: [
+          if (widget.accounts.isNotEmpty)
+            IconButton(
+              onPressed: _openScanTicketForPrefill,
+              icon: const Icon(Icons.document_scanner_outlined),
+              tooltip: 'Scanner un ticket',
+            ),
+        ],
       ),
       body: Form(
         key: _formKey,
@@ -322,243 +403,166 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             // Toggle revenu / dépense
-            _StaggeredFadeIn(
-              index: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.all(4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _ToggleButton(
-                        label: 'Dépense',
-                        color: AppColors.red,
-                        selected: !_isIncome,
-                        onTap: () => setState(() => _isIncome = false),
-                      ),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _ToggleButton(
+                      label: 'Dépense',
+                      color: AppColors.red,
+                      selected: !_isIncome,
+                      onTap: () => setState(() => _isIncome = false),
                     ),
-                    Expanded(
-                      child: _ToggleButton(
-                        label: 'Revenu',
-                        color: AppColors.green,
-                        selected: _isIncome,
-                        onTap: () => setState(() => _isIncome = true),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _StaggeredFadeIn(
-              index: 1,
-              child: TextFormField(
-                controller: _titleController,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: 'Titre (ex: Restaurant, Salaire...)',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Titre requis' : null,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 2,
-              child: TextFormField(
-                controller: _amountController,
-                style: const TextStyle(color: AppColors.textPrimary),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: 'Montant (€)'),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Montant requis';
-                  final parsed = double.tryParse(v.replaceAll(',', '.'));
-                  if (parsed == null || parsed <= 0) return 'Montant invalide';
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 3,
-              child: ElevatedButton.icon(
-                onPressed: _openScanTicketForPrefill,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.green,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                icon: const Icon(Icons.document_scanner_outlined),
-                label: const Text('Scanner un ticket pour pré-remplir'),
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 4,
-              child: DropdownButtonFormField<String>(
-                value: _category,
-                dropdownColor: AppColors.card,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(labelText: 'Catégorie'),
-                items: kCategories
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) => setState(() => _category = v!),
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 5,
-              child: DropdownButtonFormField<Account>(
-                value: _selectedAccount,
-                dropdownColor: AppColors.card,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(labelText: 'Compte'),
-                items: widget.accounts
-                    .map(
-                      (a) => DropdownMenuItem(
-                        value: a,
-                        child: Text('${a.type.name}  ${a.name}'),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedAccount = v),
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 6,
-              child: ListTile(
-                tileColor: AppColors.card,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: const Icon(
-                  Icons.calendar_today_outlined,
-                  color: AppColors.green,
-                ),
-                title: const Text(
-                  'Date et heure',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
                   ),
-                ),
-                subtitle: Text(
-                  _formatDateTime(_date),
-                  style: const TextStyle(color: AppColors.textPrimary),
-                ),
-                onTap: _pickDateTime,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 7,
-              child: TextFormField(
-                controller: _noteController,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
-                  labelText: 'Note (optionnel)',
-                  hintText: 'Par exemple Ville, référence du ticket...',
-                ),
-                maxLines: 2,
-              ),
-            ),
-            const SizedBox(height: 14),
-            _StaggeredFadeIn(
-              index: 8,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Reçu',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  Expanded(
+                    child: _ToggleButton(
+                      label: 'Revenu',
+                      color: AppColors.green,
+                      selected: _isIncome,
+                      onTap: () => setState(() => _isIncome = true),
                     ),
-                    const SizedBox(height: 12),
-                    if (_receiptImagePath != null) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Image.file(
-                          File(_receiptImagePath!),
-                          fit: BoxFit.cover,
-                          height: 180,
-                          width: double.infinity,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _clearReceipt,
-                              icon: const Icon(Icons.delete_outline),
-                              label: const Text('Supprimer'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _captureReceiptPhoto,
-                              icon: const Icon(Icons.camera_alt_outlined),
-                              label: const Text('Prendre une photo'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ] else ...[
-                      const Text(
-                        'Ajoute une photo de ton ticket pour garder une trace visuelle.',
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _pickReceiptFromGallery,
-                              icon: const Icon(Icons.photo_library_outlined),
-                              label: const Text('Importer'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _captureReceiptPhoto,
-                              icon: const Icon(Icons.camera_alt_outlined),
-                              label: const Text('Photo'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 28),
-            _StaggeredFadeIn(
-              index: 9,
-              child: ElevatedButton(
-                onPressed: _save,
-                child: Text(
-                  widget.initialTransaction == null
-                      ? 'Enregistrer'
-                      : 'Modifier',
+            const SizedBox(height: 16),
+
+            // Titre
+            TextFormField(
+              controller: _titleController,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Titre',
+                hintText: 'Restaurant, Salaire...',
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Titre requis' : null,
+            ),
+            const SizedBox(height: 12),
+
+            // Montant
+            TextFormField(
+              controller: _amountController,
+              style: const TextStyle(color: AppColors.textPrimary),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Montant (€)',
+                prefixIcon: Icon(Icons.euro_outlined),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Montant requis';
+                final parsed = double.tryParse(v.replaceAll(',', '.'));
+                if (parsed == null || parsed <= 0) return 'Montant invalide';
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // Catégorie
+            DropdownButtonFormField<String>(
+              value: _category,
+              dropdownColor: AppColors.card,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(labelText: 'Catégorie'),
+              items: kCategories
+                  .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                  .toList(),
+              onChanged: (v) => setState(() => _category = v!),
+            ),
+            const SizedBox(height: 12),
+
+            // Compte
+            DropdownButtonFormField<Account>(
+              value: _selectedAccount,
+              dropdownColor: AppColors.card,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(labelText: 'Compte'),
+              items: widget.accounts
+                  .map(
+                    (a) => DropdownMenuItem(
+                      value: a,
+                      child: Text('${a.type.name}  ${a.name}'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _selectedAccount = v),
+            ),
+            const SizedBox(height: 12),
+
+            // Date / heure
+            ListTile(
+              tileColor: AppColors.card,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              leading: const Icon(
+                Icons.calendar_today_outlined,
+                color: AppColors.green,
+              ),
+              title: const Text(
+                'Date et heure',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
                 ),
+              ),
+              subtitle: Text(
+                _formatDateTime(_date),
+                style: const TextStyle(color: AppColors.textPrimary),
+              ),
+              onTap: _pickDateTime,
+            ),
+            const SizedBox(height: 12),
+
+            // Localisation
+            TextFormField(
+              controller: _locationController,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Localisation',
+                hintText: 'Ville ou lieu de l\'achat',
+                prefixIcon: Icon(Icons.location_on_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Note
+            TextFormField(
+              controller: _noteController,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Note',
+                hintText: 'Référence, commentaire...',
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+
+            // Reçu (compact)
+            _ReceiptSection(
+              receiptImagePath: _receiptImagePath,
+              onShowPicker: _showReceiptPicker,
+              onClear: _clearReceipt,
+            ),
+            const SizedBox(height: 24),
+
+            ElevatedButton(
+              onPressed: _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.green,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                widget.initialTransaction == null
+                    ? 'Enregistrer'
+                    : 'Modifier',
               ),
             ),
           ],
@@ -606,95 +610,59 @@ class _ToggleButton extends StatelessWidget {
   }
 }
 
-/// Animation d'apparition en cascade : flou qui se dissipe, zoom élastique
-/// avec léger rebond, petite rotation de "pose", et glissement vers le haut.
-class _StaggeredFadeIn extends StatefulWidget {
-  final int index;
-  final Widget child;
-  const _StaggeredFadeIn({required this.index, required this.child});
+class _ReceiptSection extends StatelessWidget {
+  final String? receiptImagePath;
+  final VoidCallback onShowPicker;
+  final VoidCallback onClear;
 
-  @override
-  State<_StaggeredFadeIn> createState() => _StaggeredFadeInState();
-}
-
-class _StaggeredFadeInState extends State<_StaggeredFadeIn>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fade;
-  late final Animation<double> _slideY;
-  late final Animation<double> _scale;
-  late final Animation<double> _rotation;
-  late final Animation<double> _blur;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 750),
-    );
-    _fade = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
-    );
-    _slideY = Tween<double>(
-      begin: 46,
-      end: 0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _scale = Tween<double>(
-      begin: 0.72,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
-    _rotation = Tween<double>(
-      begin: -0.05,
-      end: 0.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _blur = Tween<double>(begin: 8.0, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
-      ),
-    );
-
-    final delay = Duration(milliseconds: 90 * widget.index.clamp(0, 24));
-    Future.delayed(delay, () {
-      if (mounted) _controller.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  const _ReceiptSection({
+    this.receiptImagePath,
+    required this.onShowPicker,
+    required this.onClear,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        Widget content = child!;
-        if (_blur.value > 0.05) {
-          content = ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(
-              sigmaX: _blur.value,
-              sigmaY: _blur.value,
-            ),
-            child: content,
-          );
-        }
-        return Opacity(
-          opacity: _fade.value.clamp(0.0, 1.0),
-          child: Transform.translate(
-            offset: Offset(0, _slideY.value),
-            child: Transform.rotate(
-              angle: _rotation.value,
-              child: Transform.scale(scale: _scale.value, child: content),
+    if (receiptImagePath != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.file(
+              File(receiptImagePath!),
+              fit: BoxFit.cover,
+              height: 160,
+              width: double.infinity,
             ),
           ),
-        );
-      },
-      child: widget.child,
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Supprimer'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onShowPicker,
+                  icon: const Icon(Icons.photo_camera, size: 18),
+                  label: const Text('Changer'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: onShowPicker,
+      icon: const Icon(Icons.photo_camera_back_outlined, size: 20),
+      label: const Text('Ajouter un reçu'),
     );
   }
 }

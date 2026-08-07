@@ -310,8 +310,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                           value: tx.note!,
                         ),
                       ),
-                  ],
-                ),
+                    if (tx.location != null && tx.location!.isNotEmpty)
+                      _StaggeredFadeIn(
+                        index: 4,
+                        child: _DetailRow(
+                          icon: Icons.location_on_outlined,
+                          label: 'Localisation',
+                          value: tx.location!,
+                        ),
+                      ),
+                    ],
+                  ),
                 if (tx.receiptImagePath != null) ...[
                   const SizedBox(height: 20),
                   _StaggeredFadeIn(

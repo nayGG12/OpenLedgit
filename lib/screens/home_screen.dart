@@ -37,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // Pulsation douce du bouton "+"
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
+  bool _isFabExpanded = false;
 
   @override
   void initState() {
@@ -61,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadUserName() async {
-    // Priorité au nom local sauvegardé
     final local = await StorageService.getUserFullName();
     if (local != null && local.trim().isNotEmpty) {
       final firstName = local.trim().split(' ').first;
@@ -78,9 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           .doc(user.uid)
           .get();
       name = doc.data()?['fullName'] as String?;
-    } catch (_) {
-      // Pas bloquant : on retombe sur les infos Firebase Auth ci-dessous.
-    }
+    } catch (_) {}
     name ??= user.displayName;
     name ??= user.email?.split('@').first;
     name ??= 'à toi';
@@ -91,14 +89,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _load() async {
-    // S'assure que les données par défaut (structures internes) sont initialisées
-    // si le storage est vide. Ne crée AUCUN compte ni transaction automatiquement.
-
     final accounts = await StorageService.getAccounts();
-
-    // Les transactions sont déjà sauvegardées automatiquement en local dès leur
-    // création (StorageService.addTransaction), on se contente ici de recharger
-    // l'état affiché à l'écran.
     final txs = await StorageService.getTransactions();
     if (!mounted) return;
     setState(() {
@@ -163,6 +154,164 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
     if (deleted == true) _load();
   }
+
+  void _openAdvancedFiltersDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: const Text(
+          'Filtres avancés',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: _selectedCategoryFilter,
+                  dropdownColor: AppColors.card,
+                  decoration: InputDecoration(
+                    fillColor: AppColors.card,
+                    filled: true,
+                    labelText: 'Catégorie',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  items: ['Tous', ...kCategories]
+                      .map(
+                        (category) => DropdownMenuItem(
+                          value: category,
+                          child: Text(category),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(
+                    () => _selectedCategoryFilter = value ?? 'Tous',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  value: _selectedAccountFilter,
+                  dropdownColor: AppColors.card,
+                  decoration: InputDecoration(
+                    fillColor: AppColors.card,
+                    filled: true,
+                    labelText: 'Compte',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  items: [
+                    const DropdownMenuItem(
+                      value: 'Tous',
+                      child: Text('Tous'),
+                    ),
+                    ..._accounts
+                        .map(
+                          (account) => DropdownMenuItem(
+                            value: account.id,
+                            child: Text(account.name),
+                          ),
+                        )
+                        .toList(),
+                  ],
+                  onChanged: (value) => setState(
+                    () => _selectedAccountFilter = value ?? 'Tous',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  value: _selectedTypeFilter,
+                  dropdownColor: AppColors.card,
+                  decoration: InputDecoration(
+                    fillColor: AppColors.card,
+                    filled: true,
+                    labelText: 'Type',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Tous', child: Text('Tous')),
+                    DropdownMenuItem(value: 'Revenu', child: Text('Revenu')),
+                    DropdownMenuItem(value: 'Dépense', child: Text('Dépense')),
+                  ],
+                  onChanged: (value) => setState(
+                    () => _selectedTypeFilter = value ?? 'Tous',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Montant min (€)',
+                    filled: true,
+                    fillColor: AppColors.card,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (value) =>
+                      setState(() => _minAmountFilter = value),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Montant max (€)',
+                    filled: true,
+                    fillColor: AppColors.card,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (value) =>
+                      setState(() => _maxAmountFilter = value),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => setState(() {
+              _selectedCategoryFilter = 'Tous';
+              _selectedAccountFilter = 'Tous';
+              _selectedTypeFilter = 'Tous';
+              _minAmountFilter = '';
+              _maxAmountFilter = '';
+            }),
+            child: const Text('Réinitialiser'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Appliquer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool get _hasActiveFilters =>
+      _selectedCategoryFilter != 'Tous' ||
+      _selectedAccountFilter != 'Tous' ||
+      _selectedTypeFilter != 'Tous' ||
+      _minAmountFilter.isNotEmpty ||
+      _maxAmountFilter.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -234,17 +383,62 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         curve: Curves.elasticOut,
         builder: (context, entrance, child) =>
             Transform.scale(scale: entrance, child: child),
-        child: ScaleTransition(
-          scale: _pulseAnimation,
-          child: FloatingActionButton(
-            onPressed: _openAddTransaction,
-            child: const Icon(Icons.add),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isFabExpanded) ...[
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                builder: (context, value, child) =>
+                    Transform.scale(scale: value, child: child),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: FloatingActionButton.extended(
+                    onPressed: _openAddTransaction,
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    label: const Text('Saisie manuelle'),
+                    backgroundColor: AppColors.green,
+                    foregroundColor: Colors.black,
+                  ),
+                ),
+              ),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                builder: (context, value, child) =>
+                    Transform.scale(scale: value, child: child),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: FloatingActionButton.extended(
+                    onPressed: _openScanTicket,
+                    icon: const Icon(Icons.document_scanner_outlined, size: 20),
+                    label: const Text('Scanner un ticket'),
+                    backgroundColor: AppColors.card,
+                    foregroundColor: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+            ScaleTransition(
+              scale: _pulseAnimation,
+              child: FloatingActionButton(
+                onPressed: () => setState(() {
+                  _isFabExpanded = !_isFabExpanded;
+                }),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Icon(_isFabExpanded ? Icons.close : Icons.add),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       body: Stack(
         children: [
-          // Fond animé, discret : quelques halos qui bougent très lentement
           const Positioned.fill(child: _AnimatedBackdrop()),
           _loading
               ? const Center(
@@ -278,14 +472,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               color: AppColors.card,
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: Row(
+                            child: const Row(
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.info_outline,
                                   color: AppColors.green,
                                 ),
-                                const SizedBox(width: 12),
-                                const Expanded(
+                                SizedBox(width: 12),
+                                Expanded(
                                   child: Text(
                                     "Aucun compte pour l'instant. Ajoute-en un dans l'onglet Comptes pour commencer à suivre tes finances.",
                                     style: TextStyle(
@@ -326,46 +520,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 20),
-                      _StaggeredFadeIn(
-                        index: 3,
-                        child: GestureDetector(
-                          onTap: _openScanTicket,
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: AppColors.card,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Row(
-                              children: const [
-                                Icon(
-                                  Icons.qr_code_scanner_outlined,
-                                  color: AppColors.green,
-                                  size: 28,
-                                ),
-                                SizedBox(width: 14),
-                                Expanded(
-                                  child: Text(
-                                    'Scanner un ticket pour pré-remplir une transaction',
-                                    style: TextStyle(
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios,
-                                  color: AppColors.textSecondary,
-                                  size: 18,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
                       if (_accounts.isNotEmpty) ...[
+                        const SizedBox(height: 14),
                         _StaggeredFadeIn(
                           index: 3,
                           child: Container(
@@ -401,285 +557,60 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                      ],
-                      _StaggeredFadeIn(
-                        index: 4,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.card,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Résumé mensuel',
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                        const SizedBox(height: 14),
+                        _StaggeredFadeIn(
+                          index: 5 + _accounts.length,
+                          child: TextField(
+                            style: const TextStyle(color: AppColors.textPrimary),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: AppColors.card,
+                              hintText: 'Rechercher une transaction',
+                              hintStyle: const TextStyle(
+                                color: AppColors.textSecondary,
                               ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _selectedChartAccount,
-                                      dropdownColor: AppColors.card,
-                                      decoration: InputDecoration(
-                                        fillColor: AppColors.card,
-                                        filled: true,
-                                        labelText: 'Compte graphique',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      items: [
-                                        const DropdownMenuItem(
-                                          value: 'Tous',
-                                          child: Text('Tous les comptes'),
-                                        ),
-                                        ..._accounts.map(
-                                          (account) => DropdownMenuItem(
-                                            value: account.id,
-                                            child: Text(account.name),
-                                          ),
-                                        ),
-                                      ],
-                                      onChanged: (value) => setState(
-                                        () => _selectedChartAccount =
-                                            value ?? 'Tous',
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: AppColors.textSecondary,
                               ),
-                              const SizedBox(height: 12),
-                              _MonthlyChart(
-                                transactions: chartTransactions,
-                                currentBalance: chartBalance,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
                               ),
-                            ],
+                            ),
+                            onChanged: (value) {
+                              setState(() => _searchQuery = value);
+                            },
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                      const SizedBox(height: 12),
-                      _StaggeredFadeIn(
-                        index: 5 + _accounts.length,
-                        child: TextField(
-                          style: const TextStyle(color: AppColors.textPrimary),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: AppColors.card,
-                            hintText: 'Rechercher une transaction',
-                            hintStyle: const TextStyle(
-                              color: AppColors.textSecondary,
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: AppColors.textSecondary,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          onChanged: (value) {
-                            setState(() => _searchQuery = value);
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _StaggeredFadeIn(
-                        index: 6 + _accounts.length,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.card,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                        const SizedBox(height: 14),
+                        _StaggeredFadeIn(
+                          index: 6 + _accounts.length,
+                          child: Row(
                             children: [
-                              const Text(
-                                'Filtres avancés',
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontWeight: FontWeight.bold,
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: _openAdvancedFiltersDialog,
+                                  icon: Icon(
+                                    Icons.tune_outlined,
+                                    color: _hasActiveFilters
+                                        ? AppColors.green
+                                        : AppColors.textSecondary,
+                                  ),
+                                  label: Text(
+                                    _hasActiveFilters
+                                        ? 'Filtres actifs'
+                                        : 'Filtres avancés',
+                                    style: TextStyle(
+                                      color: _hasActiveFilters
+                                          ? AppColors.green
+                                          : AppColors.textSecondary,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: [
-                                  SizedBox(
-                                    width: 160,
-                                    child: DropdownButtonFormField<String>(
-                                      value: _selectedCategoryFilter,
-                                      dropdownColor: AppColors.card,
-                                      decoration: InputDecoration(
-                                        fillColor: AppColors.card,
-                                        filled: true,
-                                        labelText: 'Catégorie',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      items: ['Tous', ...kCategories]
-                                          .map(
-                                            (category) => DropdownMenuItem(
-                                              value: category,
-                                              child: Text(category),
-                                            ),
-                                          )
-                                          .toList(),
-                                      onChanged: (value) => setState(
-                                        () => _selectedCategoryFilter =
-                                            value ?? 'Tous',
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 160,
-                                    child: DropdownButtonFormField<String>(
-                                      value: _selectedAccountFilter,
-                                      dropdownColor: AppColors.card,
-                                      decoration: InputDecoration(
-                                        fillColor: AppColors.card,
-                                        filled: true,
-                                        labelText: 'Compte',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      items: [
-                                        const DropdownMenuItem(
-                                          value: 'Tous',
-                                          child: Text('Tous'),
-                                        ),
-                                        ..._accounts
-                                            .map(
-                                              (account) => DropdownMenuItem(
-                                                value: account.id,
-                                                child: Text(account.name),
-                                              ),
-                                            )
-                                            .toList(),
-                                      ],
-                                      onChanged: (value) => setState(
-                                        () => _selectedAccountFilter =
-                                            value ?? 'Tous',
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 160,
-                                    child: DropdownButtonFormField<String>(
-                                      value: _selectedTypeFilter,
-                                      dropdownColor: AppColors.card,
-                                      decoration: InputDecoration(
-                                        fillColor: AppColors.card,
-                                        filled: true,
-                                        labelText: 'Type',
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value: 'Tous',
-                                          child: Text('Tous'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'Revenu',
-                                          child: Text('Revenu'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: 'Dépense',
-                                          child: Text('Dépense'),
-                                        ),
-                                      ],
-                                      onChanged: (value) => setState(
-                                        () => _selectedTypeFilter =
-                                            value ?? 'Tous',
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 100,
-                                    child: TextField(
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                      style: const TextStyle(
-                                        color: AppColors.textPrimary,
-                                      ),
-                                      decoration: InputDecoration(
-                                        labelText: 'Min €',
-                                        filled: true,
-                                        fillColor: AppColors.card,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      onChanged: (value) => setState(
-                                        () => _minAmountFilter = value,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    width: 100,
-                                    child: TextField(
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                      style: const TextStyle(
-                                        color: AppColors.textPrimary,
-                                      ),
-                                      decoration: InputDecoration(
-                                        labelText: 'Max €',
-                                        filled: true,
-                                        fillColor: AppColors.card,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                      ),
-                                      onChanged: (value) => setState(
-                                        () => _maxAmountFilter = value,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
+                              if (_hasActiveFilters)
+                                TextButton(
                                   onPressed: () => setState(() {
                                     _selectedCategoryFilter = 'Tous';
                                     _selectedAccountFilter = 'Tous';
@@ -687,85 +618,147 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     _minAmountFilter = '';
                                     _maxAmountFilter = '';
                                   }),
-                                  child: const Text(
-                                    'Réinitialiser les filtres',
-                                  ),
+                                  child: const Text('Réinitialiser'),
                                 ),
-                              ),
                             ],
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      _StaggeredFadeIn(
-                        index: 6 + _accounts.length,
-                        child: const Text(
-                          'Dernières transactions',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(height: 16),
+                        _StaggeredFadeIn(
+                          index: 6 + _accounts.length,
+                          child: const Text(
+                            'Dernières transactions',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      if (filteredTransactions.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 24),
-                          child: Center(
-                            child: Text(
-                              _searchQuery.trim().isEmpty
-                                  ? 'Aucune transaction pour l\'instant.\nAppuie sur + pour en ajouter une.'
-                                  : 'Aucune transaction ne correspond à cette recherche.',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
+                        const SizedBox(height: 4),
+                        if (filteredTransactions.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text(
+                                _searchQuery.trim().isEmpty
+                                    ? 'Aucune transaction pour l\'instant.\nAppuie sur + pour en ajouter une.'
+                                    : 'Aucune transaction ne correspond à cette recherche.',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 4,
+                              ),
+                              child: Column(
+                                children: filteredTransactions
+                                    .take(10)
+                                    .toList()
+                                    .asMap()
+                                    .entries
+                                    .map((entry) {
+                                      final i = entry.key;
+                                      final t = entry.value;
+                                      final accountName =
+                                          accountNames[t.accountId] ?? 'Inconnu';
+                                      return _StaggeredFadeIn(
+                                        index: 7 + _accounts.length + i,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            onTap: () => _openTransactionDetail(
+                                              t,
+                                              accountName,
+                                            ),
+                                            child: TransactionTile(
+                                              transaction: t,
+                                              accountName: accountName,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    })
+                                    .toList(),
                               ),
                             ),
                           ),
-                        )
-                      else
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 4,
+                        const SizedBox(height: 20),
+                        _StaggeredFadeIn(
+                          index: 5 + _accounts.length,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(18),
                             ),
+                            padding: const EdgeInsets.all(18),
                             child: Column(
-                              children: filteredTransactions
-                                  .take(10)
-                                  .toList()
-                                  .asMap()
-                                  .entries
-                                  .map((entry) {
-                                    final i = entry.key;
-                                    final t = entry.value;
-                                    final accountName =
-                                        accountNames[t.accountId] ?? 'Inconnu';
-                                    return _StaggeredFadeIn(
-                                      index: 7 + _accounts.length + i,
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          onTap: () => _openTransactionDetail(
-                                            t,
-                                            accountName,
-                                          ),
-                                          child: TransactionTile(
-                                            transaction: t,
-                                            accountName: accountName,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Résumé mensuel',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: DropdownButtonFormField<String>(
+                                        value: _selectedChartAccount,
+                                        dropdownColor: AppColors.card,
+                                        decoration: InputDecoration(
+                                          fillColor: AppColors.card,
+                                          filled: true,
+                                          labelText: 'Compte graphique',
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(14),
+                                            borderSide: BorderSide.none,
                                           ),
                                         ),
+                                        items: [
+                                          const DropdownMenuItem(
+                                            value: 'Tous',
+                                            child: Text('Tous les comptes'),
+                                          ),
+                                          ..._accounts.map(
+                                            (account) => DropdownMenuItem(
+                                              value: account.id,
+                                              child: Text(account.name),
+                                            ),
+                                          ),
+                                        ],
+                                        onChanged: (value) => setState(
+                                          () => _selectedChartAccount =
+                                              value ?? 'Tous',
+                                        ),
                                       ),
-                                    );
-                                  })
-                                  .toList(),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _MonthlyChart(
+                                  transactions: chartTransactions,
+                                  currentBalance: chartBalance,
+                                ),
+                              ],
                             ),
                           ),
                         ),
+                      ],
                     ],
                   ),
                 ),
@@ -775,8 +768,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-/// Petit fondu + glissement pour faire apparaître les éléments en cascade,
-/// sans dépendre d'un nombre d'items fixé à l'avance.
 class _StaggeredFadeIn extends StatefulWidget {
   final int index;
   final Widget child;
@@ -802,8 +793,6 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn>
       vsync: this,
       duration: const Duration(milliseconds: 750),
     );
-    // Le fondu se termine avant la fin du mouvement : l'élément est déjà
-    // visible pendant qu'il finit de se "poser" à sa place.
     _fade = CurvedAnimation(
       parent: _controller,
       curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
@@ -812,7 +801,6 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn>
       begin: 46,
       end: 0,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    // Léger dépassement (overshoot) pour un effet "pop" au lieu d'un simple zoom.
     _scale = Tween<double>(
       begin: 0.72,
       end: 1.0,
@@ -1131,9 +1119,6 @@ class _LineChartPainter extends CustomPainter {
   }
 }
 
-/// Fond décoratif : plusieurs formes organiques (pas des ronds parfaits) qui
-/// flottent avec un mouvement plus vif, dégradé qui s'estompe en transparence.
-/// Purement décoratif — n'intercepte aucun geste (IgnorePointer).
 class _BlobSpec {
   final double size;
   final int seed;
@@ -1276,8 +1261,6 @@ class _AnimatedBackdropState extends State<_AnimatedBackdrop>
   }
 }
 
-/// Forme organique irrégulière (pas un cercle) remplie d'un dégradé radial
-/// qui s'estompe vers la transparence, avec un léger flou pour un rendu doux.
 class _OrganicBlob extends StatelessWidget {
   final double size;
   final int seed;

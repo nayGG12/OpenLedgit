@@ -29,6 +29,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   ScannedTicketData? _ticket;
   String? _error;
   bool _isProcessing = false;
+  bool _isPickingImage = false;
   String? _capturedImagePath;
 
   @override
@@ -39,13 +40,38 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
 
   // Prendre une photo du ticket avec la caméra
   Future<void> _captureAndProcessTicket() async {
-    final pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 90,
-    );
+    if (_isPickingImage) return;
+    _isPickingImage = true;
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 90,
+      );
+      if (pickedFile == null) return;
+      await _processTicketImage(pickedFile);
+    } finally {
+      _isPickingImage = false;
+    }
+  }
 
-    if (pickedFile == null) return;
+  // Importer une photo de ticket depuis la galerie
+  Future<void> _pickFromGalleryAndProcessTicket() async {
+    if (_isPickingImage) return;
+    _isPickingImage = true;
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 90,
+      );
+      if (pickedFile == null) return;
+      await _processTicketImage(pickedFile);
+    } finally {
+      _isPickingImage = false;
+    }
+  }
 
+  // Analyse l'image sélectionnée ou capturée via la reconnaissance de texte IA
+  Future<void> _processTicketImage(XFile pickedFile) async {
     setState(() {
       _isProcessing = true;
       _error = null;
@@ -58,7 +84,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         inputImage,
       );
 
-      // Analyse du texte extrait par l'IA locale
       final parsedData = _parseRecognizedText(recognizedText);
 
       setState(() {
@@ -193,6 +218,19 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     });
   }
 
+  void _openManualEntry() {
+    Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddTransactionScreen(
+          accounts: widget.accounts,
+        ),
+      ),
+    ).then((saved) {
+      if (saved == true && mounted) Navigator.pop(context, true);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -235,12 +273,24 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(color: AppColors.textSecondary),
                           ),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: _captureAndProcessTicket,
-                            icon: const Icon(Icons.camera_alt),
-                            label: const Text('Prendre en photo le ticket'),
-                          ),
+                           const SizedBox(height: 24),
+                           ElevatedButton.icon(
+                             onPressed: _captureAndProcessTicket,
+                             icon: const Icon(Icons.camera_alt),
+                             label: const Text('Prendre en photo le ticket'),
+                           ),
+                           const SizedBox(height: 12),
+                           OutlinedButton.icon(
+                             onPressed: _pickFromGalleryAndProcessTicket,
+                             icon: const Icon(Icons.photo_library_outlined),
+                             label: const Text('Importer une photo depuis la galerie'),
+                           ),
+                           const SizedBox(height: 12),
+                           TextButton.icon(
+                             onPressed: _openManualEntry,
+                             icon: const Icon(Icons.edit_outlined),
+                             label: const Text('Ajouter les informations manuellement'),
+                           ),
                         ],
                       ),
                     ),
@@ -254,6 +304,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                 onPressed: _captureAndProcessTicket,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Refaire une photo'),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _pickFromGalleryAndProcessTicket,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Importer une autre photo'),
               ),
               const SizedBox(height: 10),
               ElevatedButton.icon(

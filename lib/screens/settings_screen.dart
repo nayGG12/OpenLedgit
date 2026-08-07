@@ -459,7 +459,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.info_outline,
                         title: 'OpenLedger',
                         subtitle:
-                            '"Your money. Your data." — v4.0.0 · Licence MIT',
+                            '"Your money. Your data." — v5.2.5 · Licence MIT',
                         onTap: null,
                       ),
                       const Divider(height: 1),
