@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction.dart';
+import '../screens/add_transaction_screen.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 
@@ -91,7 +92,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
   String _formatDate(DateTime d) {
     final day = _days[d.weekday - 1];
     final month = _months[d.month - 1];
-    return '$day ${d.day} $month ${d.year}';
+    final time = DateFormat('HH:mm').format(d);
+    return '$day ${d.day} $month ${d.year} à $time';
   }
 
   Future<void> _openReceipt() async {
@@ -155,6 +157,23 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
     }
   }
 
+  Future<void> _editTransaction() async {
+    final accounts = await StorageService.getAccounts();
+    final updated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddTransactionScreen(
+          accounts: accounts,
+          initialTransaction: widget.transaction,
+        ),
+      ),
+    );
+
+    if (updated == true && mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tx = widget.transaction;
@@ -168,6 +187,13 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('Détail de la transaction'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: _editTransaction,
+            tooltip: 'Modifier',
+          ),
+        ],
       ),
       body: SafeArea(
         child: AnimatedBuilder(

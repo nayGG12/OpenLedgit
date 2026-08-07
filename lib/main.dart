@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'account/welcome.dart';
 import 'account/collect_name.dart';
+import 'screens/splash_screen.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
@@ -17,10 +21,14 @@ Future<void> main() async {
   // 1. Initialisation de Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  // 2. Initialisation des données de formatage pour les locales
+  await initializeDateFormatting('fr_FR', null);
+  Intl.defaultLocale = 'fr_FR';
+
   // Initialisation des données locales
   await StorageService.initDefaultDataIfNeeded();
 
-  // 2. Bloquer l'orientation en mode portrait uniquement sur toute l'application
+  // 3. Bloquer l'orientation en mode portrait uniquement sur toute l'application
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -37,6 +45,13 @@ class OpenLedgerApp extends StatelessWidget {
     return MaterialApp(
       title: 'OpenLedger',
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('fr', 'FR')],
+      locale: const Locale('fr', 'FR'),
       theme: AppTheme.dark.copyWith(
         // 3. Supprimer les animations de transition de page par défaut sur iOS (les rendre "brutes" sans effet de glissement)
         pageTransitionsTheme: const PageTransitionsTheme(
@@ -66,12 +81,7 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: AppColors.background,
-            body: Center(
-              child: CircularProgressIndicator(color: AppColors.green),
-            ),
-          );
+          return const SplashScreen();
         }
 
         final user = snapshot.data;
@@ -87,12 +97,7 @@ class AuthGate extends StatelessWidget {
           future: StorageService.getUserFullName(),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                backgroundColor: AppColors.background,
-                body: Center(
-                  child: CircularProgressIndicator(color: AppColors.green),
-                ),
-              );
+              return const SplashScreen();
             }
             final localName = snap.data;
             if (localName == null || localName.trim().isEmpty) {

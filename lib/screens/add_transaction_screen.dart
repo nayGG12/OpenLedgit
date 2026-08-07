@@ -2,25 +2,17 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/account.dart';
 import '../models/transaction.dart';
+import '../screens/scan_ticket_screen.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 
-// Définition de la liste des catégories par défaut si elle n'existe pas ailleurs
-const List<String> kCategories = [
-  'Alimentation',
-  'Loisirs',
-  'Logement',
-  'Transport',
-  'Santé',
-  'Revenu',
-  'Autre',
-];
-
 class AddTransactionScreen extends StatefulWidget {
   final List<Account> accounts;
+  final LedgerTransaction? initialTransaction;
   final String? initialTitle;
   final double? initialAmount;
   final String? initialCategory;
@@ -32,6 +24,7 @@ class AddTransactionScreen extends StatefulWidget {
   const AddTransactionScreen({
     super.key,
     required this.accounts,
+    this.initialTransaction,
     this.initialTitle,
     this.initialAmount,
     this.initialCategory,
@@ -66,21 +59,36 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         : null;
     _category = widget.initialCategory ?? kCategories.last;
     _receiptImagePath = widget.initialReceiptImagePath;
-    if (widget.initialTitle != null) {
-      _titleController.text = widget.initialTitle!;
-    }
-    if (widget.initialAmount != null) {
-      final amount = widget.initialAmount!;
-      _isIncome = amount >= 0;
-      _amountController.text = amount.abs().toStringAsFixed(2);
-    }
-    if (widget.initialDate != null) {
-      _date = widget.initialDate!;
-    }
-    if (widget.initialNote != null) {
-      _noteController.text = widget.initialNote!;
-    } else if (widget.initialLocation != null) {
-      _noteController.text = 'Ville : ${widget.initialLocation!}';
+    final transaction = widget.initialTransaction;
+    if (transaction != null) {
+      _titleController.text = transaction.title;
+      _amountController.text = transaction.amount.abs().toStringAsFixed(2);
+      _isIncome = transaction.amount >= 0;
+      _category = transaction.category;
+      _date = transaction.date;
+      _noteController.text = transaction.note ?? '';
+      _receiptImagePath = transaction.receiptImagePath;
+      _selectedAccount = widget.accounts.firstWhere(
+        (a) => a.id == transaction.accountId,
+        orElse: () => widget.accounts.first,
+      );
+    } else {
+      if (widget.initialTitle != null) {
+        _titleController.text = widget.initialTitle!;
+      }
+      if (widget.initialAmount != null) {
+        final amount = widget.initialAmount!;
+        _isIncome = amount >= 0;
+        _amountController.text = amount.abs().toStringAsFixed(2);
+      }
+      if (widget.initialDate != null) {
+        _date = widget.initialDate!;
+      }
+      if (widget.initialNote != null) {
+        _noteController.text = widget.initialNote!;
+      } else if (widget.initialLocation != null) {
+        _noteController.text = 'Ville : ${widget.initialLocation!}';
+      }
     }
   }
 
@@ -92,12 +100,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+  Future<void> _pickDateTime() async {
+    final pickedDate = await showDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      locale: const Locale('fr', 'FR'),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.dark(
@@ -108,7 +117,64 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         child: child!,
       ),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (pickedDate == null) return;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_date),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          timePickerTheme: TimePickerThemeData(
+            dialHandColor: AppColors.green,
+            hourMinuteColor: AppColors.card,
+            dayPeriodColor: AppColors.card,
+          ),
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.green,
+            surface: AppColors.card,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (pickedTime == null) return;
+
+    setState(() {
+      _date = DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+    });
+  }
+
+  String _formatDateTime(DateTime date) {
+    return DateFormat("dd MMMM yyyy 'à' HH:mm", 'fr_FR').format(date);
+  }
+
+  Future<void> _openScanTicketForPrefill() async {
+    final scanned = await Navigator.push<ScannedTicketData?>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScanTicketScreen(
+          accounts: widget.accounts,
+          returnScannedData: true,
+        ),
+      ),
+    );
+    if (scanned == null) return;
+
+    setState(() {
+      _titleController.text = scanned.title;
+      if (scanned.amount != null) {
+        _amountController.text = scanned.amount!.abs().toStringAsFixed(2);
+      }
+      _date = scanned.date ?? _date;
+      _category = scanned.category ?? _category;
+      _isIncome = false;
+    });
   }
 
   Future<String> _copyReceiptFile(File source, String name) async {
@@ -188,7 +254,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         : noteText;
 
     final tx = LedgerTransaction(
-      id: StorageService.newId(),
+      id: widget.initialTransaction?.id ?? StorageService.newId(),
       title: _titleController.text.trim(),
       amount: amount,
       category: _category,
@@ -198,7 +264,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       receiptImagePath: _receiptImagePath,
     );
 
-    await StorageService.addTransaction(tx);
+    if (widget.initialTransaction == null) {
+      await StorageService.addTransaction(tx);
+    } else {
+      await StorageService.updateTransaction(tx);
+    }
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -239,7 +309,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Nouvelle transaction')),
+      appBar: AppBar(
+        title: Text(
+          widget.initialTransaction == null
+              ? 'Nouvelle transaction'
+              : 'Modifier la transaction',
+        ),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -310,6 +386,20 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             const SizedBox(height: 14),
             _StaggeredFadeIn(
               index: 3,
+              child: ElevatedButton.icon(
+                onPressed: _openScanTicketForPrefill,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.green,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                icon: const Icon(Icons.document_scanner_outlined),
+                label: const Text('Scanner un ticket pour pré-remplir'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _StaggeredFadeIn(
+              index: 4,
               child: DropdownButtonFormField<String>(
                 value: _category,
                 dropdownColor: AppColors.card,
@@ -323,7 +413,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             const SizedBox(height: 14),
             _StaggeredFadeIn(
-              index: 4,
+              index: 5,
               child: DropdownButtonFormField<Account>(
                 value: _selectedAccount,
                 dropdownColor: AppColors.card,
@@ -342,7 +432,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             const SizedBox(height: 14),
             _StaggeredFadeIn(
-              index: 5,
+              index: 6,
               child: ListTile(
                 tileColor: AppColors.card,
                 shape: RoundedRectangleBorder(
@@ -352,16 +442,23 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   Icons.calendar_today_outlined,
                   color: AppColors.green,
                 ),
-                title: Text(
-                  '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                title: const Text(
+                  'Date et heure',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  _formatDateTime(_date),
                   style: const TextStyle(color: AppColors.textPrimary),
                 ),
-                onTap: _pickDate,
+                onTap: _pickDateTime,
               ),
             ),
             const SizedBox(height: 14),
             _StaggeredFadeIn(
-              index: 6,
+              index: 7,
               child: TextFormField(
                 controller: _noteController,
                 style: const TextStyle(color: AppColors.textPrimary),
@@ -374,7 +471,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             const SizedBox(height: 14),
             _StaggeredFadeIn(
-              index: 7,
+              index: 8,
               child: Container(
                 decoration: BoxDecoration(
                   color: AppColors.card,
@@ -454,10 +551,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             const SizedBox(height: 28),
             _StaggeredFadeIn(
-              index: 8,
+              index: 9,
               child: ElevatedButton(
                 onPressed: _save,
-                child: const Text('Enregistrer'),
+                child: Text(
+                  widget.initialTransaction == null
+                      ? 'Enregistrer'
+                      : 'Modifier',
+                ),
               ),
             ),
           ],

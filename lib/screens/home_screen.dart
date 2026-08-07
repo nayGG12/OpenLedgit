@@ -10,7 +10,7 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/account_card.dart';
 import '../widgets/transaction_tile.dart';
-import 'add_transaction_screen.dart';
+import 'add_transaction_screen.dart' show AddTransactionScreen;
 import 'scan_ticket_screen.dart';
 import 'transaction_detail_screen.dart';
 
@@ -26,6 +26,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<LedgerTransaction> _transactions = [];
   bool _loading = true;
   String _userName = '';
+  String _searchQuery = '';
+  String _selectedCategoryFilter = 'Tous';
+  String _selectedAccountFilter = 'Tous';
+  String _selectedTypeFilter = 'Tous';
+  String _selectedChartAccount = 'Tous';
+  String _minAmountFilter = '';
+  String _maxAmountFilter = '';
 
   // Pulsation douce du bouton "+"
   late final AnimationController _pulseController;
@@ -160,6 +167,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final formatter = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
+    final accountNames = {for (final a in _accounts) a.id: a.name};
+    double? parseAmount(String value) {
+      final normalized = value.trim().replaceAll(',', '.');
+      return normalized.isEmpty ? null : double.tryParse(normalized);
+    }
+
+    final minAmount = parseAmount(_minAmountFilter);
+    final maxAmount = parseAmount(_maxAmountFilter);
+
+    final chartTransactions = _selectedChartAccount == 'Tous'
+        ? _transactions
+        : _transactions
+              .where((tx) => tx.accountId == _selectedChartAccount)
+              .toList();
+
+    final chartBalance = _selectedChartAccount == 'Tous'
+        ? _total
+        : _accounts
+              .firstWhere(
+                (account) => account.id == _selectedChartAccount,
+                orElse: () => Account(
+                  id: 'Tous',
+                  name: 'Tous',
+                  type: AccountType.autre,
+                  balance: 0.0,
+                ),
+              )
+              .balance;
+
+    final filteredTransactions = _transactions.where((tx) {
+      final query = _searchQuery.toLowerCase();
+      final accountName = accountNames[tx.accountId] ?? '';
+      final matchesSearch =
+          _searchQuery.trim().isEmpty ||
+          tx.title.toLowerCase().contains(query) ||
+          tx.category.toLowerCase().contains(query) ||
+          (tx.note ?? '').toLowerCase().contains(query) ||
+          accountName.toLowerCase().contains(query);
+      if (!matchesSearch) return false;
+
+      if (_selectedCategoryFilter != 'Tous' &&
+          tx.category != _selectedCategoryFilter) {
+        return false;
+      }
+      if (_selectedAccountFilter != 'Tous' &&
+          tx.accountId != _selectedAccountFilter) {
+        return false;
+      }
+      if (_selectedTypeFilter == 'Dépense' && tx.amount >= 0) return false;
+      if (_selectedTypeFilter == 'Revenu' && tx.amount < 0) return false;
+
+      final absAmount = tx.amount.abs();
+      if (minAmount != null && absAmount < minAmount) return false;
+      if (maxAmount != null && absAmount > maxAmount) return false;
+
+      return true;
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -301,6 +365,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      if (_accounts.isNotEmpty) ...[
+                        _StaggeredFadeIn(
+                          index: 3,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Comptes disponibles',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Column(
+                                  children: _accounts
+                                      .map(
+                                        (account) => Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 12,
+                                          ),
+                                          child: AccountCard(account: account),
+                                        ),
+                                      )
+                                      .toList(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       _StaggeredFadeIn(
                         index: 4,
                         child: Container(
@@ -321,24 +423,282 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              _MonthlyChart(transactions: _transactions),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _selectedChartAccount,
+                                      dropdownColor: AppColors.card,
+                                      decoration: InputDecoration(
+                                        fillColor: AppColors.card,
+                                        filled: true,
+                                        labelText: 'Compte graphique',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem(
+                                          value: 'Tous',
+                                          child: Text('Tous les comptes'),
+                                        ),
+                                        ..._accounts.map(
+                                          (account) => DropdownMenuItem(
+                                            value: account.id,
+                                            child: Text(account.name),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (value) => setState(
+                                        () => _selectedChartAccount =
+                                            value ?? 'Tous',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _MonthlyChart(
+                                transactions: chartTransactions,
+                                currentBalance: chartBalance,
+                              ),
                             ],
                           ),
                         ),
                       ),
                       const SizedBox(height: 20),
-                      ..._accounts.asMap().entries.map(
-                        (e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _StaggeredFadeIn(
-                            index: 3 + e.key,
-                            child: AccountCard(account: e.value),
+                      const SizedBox(height: 12),
+                      _StaggeredFadeIn(
+                        index: 5 + _accounts.length,
+                        child: TextField(
+                          style: const TextStyle(color: AppColors.textPrimary),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: AppColors.card,
+                            hintText: 'Rechercher une transaction',
+                            hintStyle: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: AppColors.textSecondary,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onChanged: (value) {
+                            setState(() => _searchQuery = value);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _StaggeredFadeIn(
+                        index: 6 + _accounts.length,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text(
+                                'Filtres avancés',
+                                style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  SizedBox(
+                                    width: 160,
+                                    child: DropdownButtonFormField<String>(
+                                      value: _selectedCategoryFilter,
+                                      dropdownColor: AppColors.card,
+                                      decoration: InputDecoration(
+                                        fillColor: AppColors.card,
+                                        filled: true,
+                                        labelText: 'Catégorie',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      items: ['Tous', ...kCategories]
+                                          .map(
+                                            (category) => DropdownMenuItem(
+                                              value: category,
+                                              child: Text(category),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (value) => setState(
+                                        () => _selectedCategoryFilter =
+                                            value ?? 'Tous',
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 160,
+                                    child: DropdownButtonFormField<String>(
+                                      value: _selectedAccountFilter,
+                                      dropdownColor: AppColors.card,
+                                      decoration: InputDecoration(
+                                        fillColor: AppColors.card,
+                                        filled: true,
+                                        labelText: 'Compte',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem(
+                                          value: 'Tous',
+                                          child: Text('Tous'),
+                                        ),
+                                        ..._accounts
+                                            .map(
+                                              (account) => DropdownMenuItem(
+                                                value: account.id,
+                                                child: Text(account.name),
+                                              ),
+                                            )
+                                            .toList(),
+                                      ],
+                                      onChanged: (value) => setState(
+                                        () => _selectedAccountFilter =
+                                            value ?? 'Tous',
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 160,
+                                    child: DropdownButtonFormField<String>(
+                                      value: _selectedTypeFilter,
+                                      dropdownColor: AppColors.card,
+                                      decoration: InputDecoration(
+                                        fillColor: AppColors.card,
+                                        filled: true,
+                                        labelText: 'Type',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 'Tous',
+                                          child: Text('Tous'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Revenu',
+                                          child: Text('Revenu'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'Dépense',
+                                          child: Text('Dépense'),
+                                        ),
+                                      ],
+                                      onChanged: (value) => setState(
+                                        () => _selectedTypeFilter =
+                                            value ?? 'Tous',
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 100,
+                                    child: TextField(
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: 'Min €',
+                                        filled: true,
+                                        fillColor: AppColors.card,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      onChanged: (value) => setState(
+                                        () => _minAmountFilter = value,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 100,
+                                    child: TextField(
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: 'Max €',
+                                        filled: true,
+                                        fillColor: AppColors.card,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                      onChanged: (value) => setState(
+                                        () => _maxAmountFilter = value,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  onPressed: () => setState(() {
+                                    _selectedCategoryFilter = 'Tous';
+                                    _selectedAccountFilter = 'Tous';
+                                    _selectedTypeFilter = 'Tous';
+                                    _minAmountFilter = '';
+                                    _maxAmountFilter = '';
+                                  }),
+                                  child: const Text(
+                                    'Réinitialiser les filtres',
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       _StaggeredFadeIn(
-                        index: 4 + _accounts.length,
+                        index: 6 + _accounts.length,
                         child: const Text(
                           'Dernières transactions',
                           style: TextStyle(
@@ -349,14 +709,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      if (_transactions.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
+                      if (filteredTransactions.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
                           child: Center(
                             child: Text(
-                              'Aucune transaction pour l\'instant.\nAppuie sur + pour en ajouter une.',
+                              _searchQuery.trim().isEmpty
+                                  ? 'Aucune transaction pour l\'instant.\nAppuie sur + pour en ajouter une.'
+                                  : 'Aucune transaction ne correspond à cette recherche.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: AppColors.textSecondary),
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                              ),
                             ),
                           ),
                         )
@@ -368,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               vertical: 4,
                             ),
                             child: Column(
-                              children: _transactions
+                              children: filteredTransactions
                                   .take(10)
                                   .toList()
                                   .asMap()
@@ -376,19 +740,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   .map((entry) {
                                     final i = entry.key;
                                     final t = entry.value;
-                                    final accountName = _accounts
-                                        .firstWhere(
-                                          (a) => a.id == t.accountId,
-                                          orElse: () => Account(
-                                            id: '',
-                                            name: 'Inconnu',
-                                            type: AccountType.autre,
-                                            balance: 0,
-                                          ),
-                                        )
-                                        .name;
+                                    final accountName =
+                                        accountNames[t.accountId] ?? 'Inconnu';
                                     return _StaggeredFadeIn(
-                                      index: 5 + _accounts.length + i,
+                                      index: 7 + _accounts.length + i,
                                       child: Material(
                                         color: Colors.transparent,
                                         child: InkWell(
@@ -518,15 +873,38 @@ class _StaggeredFadeInState extends State<_StaggeredFadeIn>
 
 class _MonthlyChart extends StatelessWidget {
   final List<LedgerTransaction> transactions;
+  final double currentBalance;
 
-  const _MonthlyChart({required this.transactions});
+  const _MonthlyChart({
+    required this.transactions,
+    required this.currentBalance,
+  });
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
+    final startDate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 30));
+    final values = List<double>.generate(31, (index) {
+      final day = DateTime(
+        startDate.year,
+        startDate.month,
+        startDate.day + index,
+      );
+      final laterSum = transactions
+          .where((tx) {
+            final txDay = DateTime(tx.date.year, tx.date.month, tx.date.day);
+            return txDay.isAfter(day);
+          })
+          .fold(0.0, (sum, tx) => sum + tx.amount);
+      return currentBalance - laterSum;
+    });
+
     final monthlyTransactions = transactions
-        .where((tx) => !tx.date.isBefore(startOfMonth))
+        .where((tx) => !tx.date.isBefore(startDate))
         .toList();
     final income = monthlyTransactions
         .where((tx) => tx.amount >= 0)
@@ -534,9 +912,23 @@ class _MonthlyChart extends StatelessWidget {
     final expense = monthlyTransactions
         .where((tx) => tx.amount < 0)
         .fold(0.0, (sum, tx) => sum + tx.amount.abs());
-    final total = income + expense;
-    final incomeRatio = total <= 0 ? 0.0 : (income / total).clamp(0.0, 1.0);
-    final expenseRatio = total <= 0 ? 0.0 : (expense / total).clamp(0.0, 1.0);
+    final net = income - expense;
+
+    final minValue = values.isEmpty ? 0.0 : values.reduce(math.min);
+    final maxValue = values.isEmpty ? 0.0 : values.reduce(math.max);
+    final chartMinY = minValue == maxValue
+        ? minValue - 1.0
+        : math.min(0.0, minValue);
+    final chartMaxY = minValue == maxValue
+        ? maxValue + 1.0
+        : math.max(0.0, maxValue);
+    final yLabels = [chartMaxY, (chartMaxY + chartMinY) / 2, chartMinY];
+    final dateFormat = DateFormat('dd MMM', 'fr_FR');
+    final dateLabels = [
+      dateFormat.format(startDate),
+      dateFormat.format(startDate.add(const Duration(days: 15))),
+      dateFormat.format(now),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -545,84 +937,197 @@ class _MonthlyChart extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              'Revenus',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            Text(
-              '${income.toStringAsFixed(2)} €',
-              style: const TextStyle(color: AppColors.green),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Dépenses',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            Text(
-              '${expense.toStringAsFixed(2)} €',
-              style: const TextStyle(color: AppColors.red),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Container(
-          height: 12,
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                flex: (expenseRatio * 100).round(),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.red,
-                    borderRadius: BorderRadius.horizontal(
-                      left: Radius.circular(6),
-                      right: Radius.circular(expenseRatio == 1 ? 6 : 0),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: (incomeRatio * 100).round(),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.green,
-                    borderRadius: BorderRadius.horizontal(
-                      right: Radius.circular(6),
-                      left: Radius.circular(incomeRatio == 1 ? 6 : 0),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Solde net',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            Text(
-              '${(income - expense).toStringAsFixed(2)} €',
-              style: const TextStyle(
+              'Solde des 30 derniers jours',
+              style: TextStyle(
                 color: AppColors.textPrimary,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
+            Text(
+              '${dateFormat.format(startDate)} → ${dateFormat.format(now)}',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
           ],
+        ),
+        const SizedBox(height: 12),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            color: AppColors.card,
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 200,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: yLabels.map((value) {
+                          return Text(
+                            '${value.toStringAsFixed(0)} €',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: CustomPaint(
+                          painter: _LineChartPainter(
+                            values: values,
+                            minY: chartMinY,
+                            maxY: chartMaxY,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: dateLabels
+                        .map(
+                          (label) => Text(
+                            label,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Revenus',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                    Text(
+                      '${income.toStringAsFixed(2)} €',
+                      style: const TextStyle(color: AppColors.green),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Dépenses',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                    Text(
+                      '${expense.toStringAsFixed(2)} €',
+                      style: const TextStyle(color: AppColors.red),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Solde net : ${net.toStringAsFixed(2)} €',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
+  }
+}
+
+class _LineChartPainter extends CustomPainter {
+  final List<double> values;
+  final double minY;
+  final double maxY;
+
+  _LineChartPainter({
+    required this.values,
+    required this.minY,
+    required this.maxY,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = AppColors.textSecondary.withOpacity(0.18)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    final curvePaint = Paint()
+      ..color = AppColors.green
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    final fillPaint = Paint()..color = AppColors.green.withOpacity(0.16);
+
+    for (int line = 0; line <= 3; line++) {
+      final y = size.height * line / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    if (values.isEmpty) return;
+
+    final span = maxY - minY == 0 ? 1.0 : maxY - minY;
+    final step = values.length > 1
+        ? size.width / (values.length - 1)
+        : size.width;
+    final points = List.generate(values.length, (index) {
+      final dx = step * index;
+      final dy = size.height - ((values[index] - minY) / span) * size.height;
+      return Offset(dx, dy);
+    });
+
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var i = 1; i < points.length; i++) {
+      final prev = points[i - 1];
+      final current = points[i];
+      final mid = Offset(
+        (prev.dx + current.dx) / 2,
+        (prev.dy + current.dy) / 2,
+      );
+      path.quadraticBezierTo(prev.dx, prev.dy, mid.dx, mid.dy);
+    }
+    if (points.length > 1) {
+      final last = points.last;
+      path.quadraticBezierTo(
+        points[points.length - 2].dx,
+        points[points.length - 2].dy,
+        last.dx,
+        last.dy,
+      );
+    }
+
+    final fillPath = Path.from(path)
+      ..lineTo(points.last.dx, size.height)
+      ..lineTo(points.first.dx, size.height)
+      ..close();
+
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, curvePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LineChartPainter oldDelegate) {
+    return oldDelegate.values != values ||
+        oldDelegate.minY != minY ||
+        oldDelegate.maxY != maxY;
   }
 }
 

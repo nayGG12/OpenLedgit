@@ -130,6 +130,31 @@ class StorageService {
     }
   }
 
+  static Future<void> updateTransaction(LedgerTransaction updatedTx) async {
+    final txs = await getTransactions();
+    final idx = txs.indexWhere((t) => t.id == updatedTx.id);
+    if (idx < 0) return;
+
+    final oldTx = txs[idx];
+    txs[idx] = updatedTx;
+    await saveTransactions(txs);
+
+    final accounts = await getAccounts();
+    final oldAccountIdx = accounts.indexWhere((a) => a.id == oldTx.accountId);
+    if (oldAccountIdx >= 0) {
+      accounts[oldAccountIdx].balance -= oldTx.amount;
+    }
+    final newAccountIdx = accounts.indexWhere(
+      (a) => a.id == updatedTx.accountId,
+    );
+    if (newAccountIdx >= 0) {
+      accounts[newAccountIdx].balance += updatedTx.amount;
+    }
+    if (oldAccountIdx >= 0 || newAccountIdx >= 0) {
+      await saveAccounts(accounts);
+    }
+  }
+
   static String newId() => _uuid.v4();
 
   static Future<void> wipeAll() async {

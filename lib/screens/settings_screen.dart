@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -117,6 +118,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
       //   (route) => false,
       // );
     }
+  }
+
+  Future<void> _showOfflineJson() async {
+    final accounts = await StorageService.getAccounts();
+    final txs = await StorageService.getTransactions();
+    final payload = {
+      'app': 'OpenLedger',
+      'version': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'accounts': accounts.map((a) => a.toJson()).toList(),
+      'transactions': txs.map((t) => t.toJson()).toList(),
+    };
+    final jsonStr = const JsonEncoder.withIndent('  ').convert(payload);
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: const Text(
+          'Données hors ligne',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              jsonStr,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 12,
+                fontFamily: 'Courier',
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _editDisplayName() async {
@@ -342,12 +386,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   index: 3,
                   child: _SettingsCard(
                     children: [
-                      const _SettingsTile(
+                      _SettingsTile(
                         icon: Icons.wifi_off_outlined,
                         title: 'Mode hors ligne',
                         subtitle:
                             'Toutes tes données restent sur cet appareil, aucun serveur requis',
-                        onTap: null,
+                        onTap: _showOfflineJson,
                       ),
                       const Divider(height: 1),
                       _SettingsTile(
@@ -415,18 +459,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.info_outline,
                         title: 'OpenLedger',
                         subtitle:
-                            '"Your money. Your data." — v1.0.0 · Licence MIT',
+                            '"Your money. Your data." — v4.0.0 · Licence MIT',
                         onTap: null,
                       ),
                       const Divider(height: 1),
-                      _SettingsTile(
-                        icon: Icons.code,
-                        title: 'Code source',
-                        subtitle: 'github.com/OpenLedger-App',
-                        onTap: () => launchUrl(
-                          Uri.parse('https://github.com/OpenLedger-App'),
-                          mode: LaunchMode.externalApplication,
-                        ),
+                      const _SettingsTile(
+                        icon: Icons.copyright,
+                        title: 'Copyright',
+                        subtitle: 'OpenLedger — Tous droits réservés',
+                        onTap: null,
                       ),
                     ],
                   ),
