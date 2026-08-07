@@ -38,7 +38,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     super.dispose();
   }
 
-  // Prendre une photo du ticket avec la caméra
   Future<void> _captureAndProcessTicket() async {
     if (_isPickingImage) return;
     _isPickingImage = true;
@@ -54,7 +53,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     }
   }
 
-  // Importer une photo de ticket depuis la galerie
   Future<void> _pickFromGalleryAndProcessTicket() async {
     if (_isPickingImage) return;
     _isPickingImage = true;
@@ -70,7 +68,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     }
   }
 
-  // Analyse l'image sélectionnée ou capturée via la reconnaissance de texte IA
   Future<void> _processTicketImage(XFile pickedFile) async {
     setState(() {
       _isProcessing = true;
@@ -98,10 +95,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     }
   }
 
-  // Dictionnaire marque -> catégorie. Clés en minuscules, sans accents (voir _normalize).
-  // Ajoute librement de nouvelles enseignes ici : plus la liste est riche, meilleure est la détection.
   static const Map<String, String> _brandCategories = {
-    // Alimentation
     'carrefour': 'Alimentation', 'leclerc': 'Alimentation', 'e.leclerc': 'Alimentation',
     'auchan': 'Alimentation', 'intermarche': 'Alimentation', 'lidl': 'Alimentation',
     'aldi': 'Alimentation', 'monoprix': 'Alimentation', 'casino': 'Alimentation',
@@ -112,30 +106,24 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     'patisserie': 'Alimentation', 'mcdonald': 'Alimentation', 'burger king': 'Alimentation',
     'kfc': 'Alimentation', 'quick': 'Alimentation', 'subway': 'Alimentation',
     'starbucks': 'Alimentation', 'brioche doree': 'Alimentation', 'paul': 'Alimentation',
-    // Transport
     'total': 'Transport', 'totalenergies': 'Transport', 'esso': 'Transport',
     'shell': 'Transport', 'bp ': 'Transport', 'avia': 'Transport', 'sncf': 'Transport',
     'ratp': 'Transport', 'uber': 'Transport', 'blablacar': 'Transport',
     'vinci autoroutes': 'Transport', 'aprr': 'Transport', 'sanef': 'Transport',
     'flixbus': 'Transport', 'indigo park': 'Transport', 'europcar': 'Transport',
-    // Shopping
     'fnac': 'Shopping', 'darty': 'Shopping', 'boulanger': 'Shopping', 'amazon': 'Shopping',
     'cdiscount': 'Shopping', 'zara': 'Shopping', 'h&m': 'Shopping', 'uniqlo': 'Shopping',
     'decathlon': 'Shopping', 'la redoute': 'Shopping', 'sephora': 'Shopping',
     'zalando': 'Shopping', 'ikea': 'Shopping',
-    // Logement
     'leroy merlin': 'Logement', 'castorama': 'Logement', 'brico depot': 'Logement',
     'bricomarche': 'Logement', 'weldom': 'Logement', 'but ': 'Logement',
     'conforama': 'Logement', 'edf': 'Logement', 'engie': 'Logement', 'veolia': 'Logement',
-    // Santé
     'pharmacie': 'Santé', 'parapharmacie': 'Santé',
-    // Abonnements
     'free mobile': 'Abonnements', 'orange': 'Abonnements', 'sfr': 'Abonnements',
     'bouygues telecom': 'Abonnements', 'netflix': 'Abonnements', 'spotify': 'Abonnements',
     'disney+': 'Abonnements', 'canal+': 'Abonnements',
   };
 
-  // Mots-clés génériques utilisés en secours quand la marque n'est pas reconnue directement.
   static const Map<String, List<String>> _categoryKeywordFallback = {
     'Alimentation': ['supermarche', 'boulangerie', 'boucherie', 'epicerie', 'primeur', 'fromagerie', 'restaurant', 'brasserie', 'traiteur'],
     'Transport': ['essence', 'carburant', 'peage', 'parking', 'gazole', 'sans plomb', 'taxi', 'station service'],
@@ -145,14 +133,11 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     'Shopping': ['vetement', 'chaussure', 'pret a porter', 'bijouterie'],
   };
 
-  // Lignes à ignorer lors de la recherche du nom de l'enseigne / du montant
-  // (numéros de téléphone, SIRET, TVA...), pour ne pas les confondre avec un prix.
   static final RegExp _noiseLineRegex = RegExp(
     r'siret|siren|rcs|tva\s*intra|n[°o]\s*tva|tel\s*[:.]|t[ée]l[ée]phone|caissier|caisse\s*n|ticket\s*n',
     caseSensitive: false,
   );
 
-  /// Enlève les accents et met en minuscules pour faciliter les comparaisons.
   String _normalize(String text) {
     const withAccents = 'àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ';
     const withoutAccents = 'aaaeeeeiioouucAAAEEEEIIOOUUC';
@@ -163,9 +148,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     return result.trim();
   }
 
-  /// Détecte la marque/enseigne en scannant tout le ticket (pas seulement l'en-tête,
-  /// car le nom du magasin apparaît parfois dans le pied de page "Merci de votre visite chez...").
-  /// Retourne le nom affiché (joliment formaté) et la catégorie associée si connue.
   ({String? name, String? category}) _detectBrand(List<String> lines) {
     for (final line in lines) {
       final normalized = _normalize(line);
@@ -179,14 +161,16 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   }
 
   String _toDisplayName(String key) {
+    if (key.isEmpty) return key;
     return key
         .split(' ')
-        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .map((w) {
+          if (w.isEmpty) return w;
+          return '${w[0].toUpperCase()}${w.length > 1 ? w.substring(1) : ''}';
+        })
         .join(' ');
   }
 
-  /// Repli si aucune marque connue n'est reconnue : on prend la première ligne
-  /// exploitable du ticket (généralement le nom du commerçant en haut du reçu).
   String _fallbackTitle(List<String> lines) {
     for (final line in lines.take(5)) {
       final trimmed = line.trim();
@@ -199,7 +183,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     return 'Ticket magasin';
   }
 
-  /// Devine une catégorie à partir de mots-clés génériques quand la marque est inconnue.
   String _fallbackCategory(List<String> lines) {
     final fullText = _normalize(lines.join(' '));
     for (final entry in _categoryKeywordFallback.entries) {
@@ -210,8 +193,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     return 'Autre';
   }
 
-  // Mots-clés du montant total, du plus précis/fiable au plus générique.
-  // "sous-total" est explicitement exclu pour ne pas être confondu avec "total".
   static const List<String> _totalKeywordsPriority = [
     'net a payer',
     'montant total',
@@ -221,8 +202,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     'total',
   ];
 
-  /// Cherche le montant total en priorisant les libellés les plus fiables,
-  /// et en ignorant explicitement les lignes de sous-total, TVA, SIRET, etc.
   double? _extractTotalAmount(List<String> lines) {
     for (final keyword in _totalKeywordsPriority) {
       for (var i = 0; i < lines.length; i++) {
@@ -234,7 +213,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
           continue;
         }
         if (normalized.contains(keyword)) {
-          // Le montant est parfois sur la même ligne, parfois sur la ligne suivante.
           var found = _extractNumber(lines[i]);
           if (found == null && i + 1 < lines.length) {
             found = _extractNumber(lines[i + 1]);
@@ -248,7 +226,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     return null;
   }
 
-  /// Repère un code postal + ville (ex: "75001 PARIS") pour identifier la localisation du ticket.
   String? _detectLocation(List<String> lines) {
     final regExp = RegExp(r'\b(\d{5})\s+([A-ZÀ-Ü][A-Za-zÀ-ÿ\-\s]{1,25})\b');
     for (final line in lines) {
@@ -260,7 +237,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     return null;
   }
 
-  // Algorithme d'extraction intelligent basé sur le texte brut du ticket
   ScannedTicketData _parseRecognizedText(RecognizedText recognizedText) {
     DateTime? date;
 
@@ -275,12 +251,10 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       date ??= _parseDate(line);
     }
 
-    // 1. On cherche en priorité une marque/enseigne connue -> titre + catégorie fiables.
     final brand = _detectBrand(lines);
     final title = brand.name ?? _fallbackTitle(lines);
     final category = brand.category ?? _fallbackCategory(lines);
 
-    // 2. Montant total : recherche ciblée par mots-clés, avec repli sur le plus gros prix du ticket.
     double? amount = _extractTotalAmount(lines);
     if (amount == null) {
       double maxVal = 0.0;
@@ -294,7 +268,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       if (maxVal > 0) amount = maxVal;
     }
 
-    // 3. Localisation (facultative, affichée dans l'aperçu pour vérification).
     final location = _detectLocation(lines);
 
     return ScannedTicketData(
@@ -307,7 +280,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   }
 
   double? _extractNumber(String text) {
-    // Cherche un format de type 12.34 ou 12,34
     final regExp = RegExp(r'(\d+[\.,]\d{2})');
     final match = regExp.firstMatch(text.replaceAll(' ', ''));
     if (match != null) {
@@ -410,24 +382,24 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(color: AppColors.textSecondary),
                           ),
-                           const SizedBox(height: 24),
-                           ElevatedButton.icon(
-                             onPressed: _captureAndProcessTicket,
-                             icon: const Icon(Icons.camera_alt),
-                             label: const Text('Prendre en photo le ticket'),
-                           ),
-                           const SizedBox(height: 12),
-                           OutlinedButton.icon(
-                             onPressed: _pickFromGalleryAndProcessTicket,
-                             icon: const Icon(Icons.photo_library_outlined),
-                             label: const Text('Importer une photo depuis la galerie'),
-                           ),
-                           const SizedBox(height: 12),
-                           TextButton.icon(
-                             onPressed: _openManualEntry,
-                             icon: const Icon(Icons.edit_outlined),
-                             label: const Text('Ajouter les informations manuellement'),
-                           ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: _captureAndProcessTicket,
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text('Prendre en photo le ticket'),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _pickFromGalleryAndProcessTicket,
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Importer une photo depuis la galerie'),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton.icon(
+                            onPressed: _openManualEntry,
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Ajouter les informations manuellement'),
+                          ),
                         ],
                       ),
                     ),
