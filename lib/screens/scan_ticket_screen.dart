@@ -98,56 +98,194 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     }
   }
 
+  // Dictionnaire marque -> catégorie. Clés en minuscules, sans accents (voir _normalize).
+  // Ajoute librement de nouvelles enseignes ici : plus la liste est riche, meilleure est la détection.
+  static const Map<String, String> _brandCategories = {
+    // Alimentation
+    'carrefour': 'Alimentation', 'leclerc': 'Alimentation', 'e.leclerc': 'Alimentation',
+    'auchan': 'Alimentation', 'intermarche': 'Alimentation', 'lidl': 'Alimentation',
+    'aldi': 'Alimentation', 'monoprix': 'Alimentation', 'casino': 'Alimentation',
+    'franprix': 'Alimentation', 'super u': 'Alimentation', 'systeme u': 'Alimentation',
+    'u express': 'Alimentation', 'cora': 'Alimentation', 'picard': 'Alimentation',
+    'biocoop': 'Alimentation', 'naturalia': 'Alimentation', 'grand frais': 'Alimentation',
+    'proxi': 'Alimentation', 'spar': 'Alimentation', 'boulangerie': 'Alimentation',
+    'patisserie': 'Alimentation', 'mcdonald': 'Alimentation', 'burger king': 'Alimentation',
+    'kfc': 'Alimentation', 'quick': 'Alimentation', 'subway': 'Alimentation',
+    'starbucks': 'Alimentation', 'brioche doree': 'Alimentation', 'paul': 'Alimentation',
+    // Transport
+    'total': 'Transport', 'totalenergies': 'Transport', 'esso': 'Transport',
+    'shell': 'Transport', 'bp ': 'Transport', 'avia': 'Transport', 'sncf': 'Transport',
+    'ratp': 'Transport', 'uber': 'Transport', 'blablacar': 'Transport',
+    'vinci autoroutes': 'Transport', 'aprr': 'Transport', 'sanef': 'Transport',
+    'flixbus': 'Transport', 'indigo park': 'Transport', 'europcar': 'Transport',
+    // Shopping
+    'fnac': 'Shopping', 'darty': 'Shopping', 'boulanger': 'Shopping', 'amazon': 'Shopping',
+    'cdiscount': 'Shopping', 'zara': 'Shopping', 'h&m': 'Shopping', 'uniqlo': 'Shopping',
+    'decathlon': 'Shopping', 'la redoute': 'Shopping', 'sephora': 'Shopping',
+    'zalando': 'Shopping', 'ikea': 'Shopping',
+    // Logement
+    'leroy merlin': 'Logement', 'castorama': 'Logement', 'brico depot': 'Logement',
+    'bricomarche': 'Logement', 'weldom': 'Logement', 'but ': 'Logement',
+    'conforama': 'Logement', 'edf': 'Logement', 'engie': 'Logement', 'veolia': 'Logement',
+    // Santé
+    'pharmacie': 'Santé', 'parapharmacie': 'Santé',
+    // Abonnements
+    'free mobile': 'Abonnements', 'orange': 'Abonnements', 'sfr': 'Abonnements',
+    'bouygues telecom': 'Abonnements', 'netflix': 'Abonnements', 'spotify': 'Abonnements',
+    'disney+': 'Abonnements', 'canal+': 'Abonnements',
+  };
+
+  // Mots-clés génériques utilisés en secours quand la marque n'est pas reconnue directement.
+  static const Map<String, List<String>> _categoryKeywordFallback = {
+    'Alimentation': ['supermarche', 'boulangerie', 'boucherie', 'epicerie', 'primeur', 'fromagerie', 'restaurant', 'brasserie', 'traiteur'],
+    'Transport': ['essence', 'carburant', 'peage', 'parking', 'gazole', 'sans plomb', 'taxi', 'station service'],
+    'Santé': ['pharmacie', 'medecin', 'dentiste', 'opticien', 'mutuelle'],
+    'Logement': ['bricolage', 'quincaillerie', 'jardinerie', 'meuble', 'electromenager'],
+    'Loisirs': ['cinema', 'theatre', 'concert', 'billetterie', 'musee'],
+    'Shopping': ['vetement', 'chaussure', 'pret a porter', 'bijouterie'],
+  };
+
+  // Lignes à ignorer lors de la recherche du nom de l'enseigne / du montant
+  // (numéros de téléphone, SIRET, TVA...), pour ne pas les confondre avec un prix.
+  static final RegExp _noiseLineRegex = RegExp(
+    r'siret|siren|rcs|tva\s*intra|n[°o]\s*tva|tel\s*[:.]|t[ée]l[ée]phone|caissier|caisse\s*n|ticket\s*n',
+    caseSensitive: false,
+  );
+
+  /// Enlève les accents et met en minuscules pour faciliter les comparaisons.
+  String _normalize(String text) {
+    const withAccents = 'àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ';
+    const withoutAccents = 'aaaeeeeiioouucAAAEEEEIIOOUUC';
+    var result = text.toLowerCase();
+    for (var i = 0; i < withAccents.length; i++) {
+      result = result.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+    return result.trim();
+  }
+
+  /// Détecte la marque/enseigne en scannant tout le ticket (pas seulement l'en-tête,
+  /// car le nom du magasin apparaît parfois dans le pied de page "Merci de votre visite chez...").
+  /// Retourne le nom affiché (joliment formaté) et la catégorie associée si connue.
+  ({String? name, String? category}) _detectBrand(List<String> lines) {
+    for (final line in lines) {
+      final normalized = _normalize(line);
+      for (final entry in _brandCategories.entries) {
+        if (normalized.contains(entry.key.trim())) {
+          return (name: _toDisplayName(entry.key.trim()), category: entry.value);
+        }
+      }
+    }
+    return (name: null, category: null);
+  }
+
+  String _toDisplayName(String key) {
+    return key
+        .split(' ')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
+  /// Repli si aucune marque connue n'est reconnue : on prend la première ligne
+  /// exploitable du ticket (généralement le nom du commerçant en haut du reçu).
+  String _fallbackTitle(List<String> lines) {
+    for (final line in lines.take(5)) {
+      final trimmed = line.trim();
+      if (trimmed.length > 2 &&
+          !RegExp(r'^\d+$').hasMatch(trimmed) &&
+          !_noiseLineRegex.hasMatch(trimmed)) {
+        return trimmed;
+      }
+    }
+    return 'Ticket magasin';
+  }
+
+  /// Devine une catégorie à partir de mots-clés génériques quand la marque est inconnue.
+  String _fallbackCategory(List<String> lines) {
+    final fullText = _normalize(lines.join(' '));
+    for (final entry in _categoryKeywordFallback.entries) {
+      if (entry.value.any((kw) => fullText.contains(kw))) {
+        return entry.key;
+      }
+    }
+    return 'Autre';
+  }
+
+  // Mots-clés du montant total, du plus précis/fiable au plus générique.
+  // "sous-total" est explicitement exclu pour ne pas être confondu avec "total".
+  static const List<String> _totalKeywordsPriority = [
+    'net a payer',
+    'montant total',
+    'total ttc',
+    'total a payer',
+    'a payer',
+    'total',
+  ];
+
+  /// Cherche le montant total en priorisant les libellés les plus fiables,
+  /// et en ignorant explicitement les lignes de sous-total, TVA, SIRET, etc.
+  double? _extractTotalAmount(List<String> lines) {
+    for (final keyword in _totalKeywordsPriority) {
+      for (var i = 0; i < lines.length; i++) {
+        final normalized = _normalize(lines[i]);
+        if (normalized.contains('sous total') ||
+            normalized.contains('sous-total') ||
+            normalized.contains('soustotal') ||
+            _noiseLineRegex.hasMatch(lines[i])) {
+          continue;
+        }
+        if (normalized.contains(keyword)) {
+          // Le montant est parfois sur la même ligne, parfois sur la ligne suivante.
+          var found = _extractNumber(lines[i]);
+          if (found == null && i + 1 < lines.length) {
+            found = _extractNumber(lines[i + 1]);
+          }
+          if (found != null && found > 0 && found < 10000) {
+            return found;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Repère un code postal + ville (ex: "75001 PARIS") pour identifier la localisation du ticket.
+  String? _detectLocation(List<String> lines) {
+    final regExp = RegExp(r'\b(\d{5})\s+([A-ZÀ-Ü][A-Za-zÀ-ÿ\-\s]{1,25})\b');
+    for (final line in lines) {
+      final match = regExp.firstMatch(line);
+      if (match != null) {
+        return '${match.group(1)} ${match.group(2)!.trim()}';
+      }
+    }
+    return null;
+  }
+
   // Algorithme d'extraction intelligent basé sur le texte brut du ticket
   ScannedTicketData _parseRecognizedText(RecognizedText recognizedText) {
-    double? amount;
     DateTime? date;
-    String? category;
-    String title = 'Ticket magasin';
 
-    List<String> lines = [];
+    final List<String> lines = [];
     for (TextBlock block in recognizedText.blocks) {
       for (TextLine line in block.lines) {
         lines.add(line.text);
       }
     }
 
-    // Le nom du magasin se trouve souvent sur les premières lignes du ticket
-    if (lines.isNotEmpty) {
-      for (var line in lines.take(3)) {
-        if (line.length > 2 && !RegExp(r'^\d+').hasMatch(line)) {
-          title = line.trim();
-          break;
-        }
-      }
+    for (final line in lines) {
+      date ??= _parseDate(line);
     }
 
-    // Recherche globale dans toutes les lignes du ticket
-    for (String line in lines) {
-      final cleanLine = line.toLowerCase();
+    // 1. On cherche en priorité une marque/enseigne connue -> titre + catégorie fiables.
+    final brand = _detectBrand(lines);
+    final title = brand.name ?? _fallbackTitle(lines);
+    final category = brand.category ?? _fallbackCategory(lines);
 
-      // Recherche du montant total (ex: "TOTAL", "TOTAL TTC", "EUR", etc.)
-      if (amount == null &&
-          (cleanLine.contains('total') ||
-              cleanLine.contains('eur') ||
-              cleanLine.contains('€'))) {
-        final extracted = _extractNumber(line);
-        if (extracted != null && extracted < 10000) {
-          // Évite de prendre un numéro de téléphone ou siret
-          amount = extracted;
-        }
-      }
-
-      // Recherche de date (ex: JJ/MM/AAAA ou JJ-MM-AA)
-      if (date == null) {
-        date = _parseDate(line);
-      }
-    }
-
-    // Si aucun "TOTAL" explicite n'a été trouvé, on cherche le plus grand prix du ticket
+    // 2. Montant total : recherche ciblée par mots-clés, avec repli sur le plus gros prix du ticket.
+    double? amount = _extractTotalAmount(lines);
     if (amount == null) {
       double maxVal = 0.0;
-      for (String line in lines) {
+      for (final line in lines) {
+        if (_noiseLineRegex.hasMatch(line)) continue;
         final val = _extractNumber(line);
         if (val != null && val > maxVal && val < 5000) {
           maxVal = val;
@@ -156,16 +294,15 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       if (maxVal > 0) amount = maxVal;
     }
 
+    // 3. Localisation (facultative, affichée dans l'aperçu pour vérification).
+    final location = _detectLocation(lines);
+
     return ScannedTicketData(
       title: title,
       amount: amount,
       date: date ?? DateTime.now(),
-      category:
-          category ??
-          kCategories.firstWhere(
-            (item) => item == 'Alimentation',
-            orElse: () => kCategories.last,
-          ),
+      category: category,
+      location: location,
     );
   }
 
@@ -364,6 +501,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                 : 'Non détectée',
           ),
           _buildPreviewRow('Catégorie', ticket.category ?? 'Autre'),
+          if (ticket.location != null) _buildPreviewRow('Lieu détecté', ticket.location!),
           const Spacer(),
           const Text(
             'Vérifie les données. Tu pourras les modifier à l\'étape suivante si besoin.',
@@ -399,11 +537,13 @@ class ScannedTicketData {
   final DateTime? date;
   final double? amount;
   final String? category;
+  final String? location;
 
   const ScannedTicketData({
     required this.title,
     this.date,
     this.amount,
     this.category,
+    this.location,
   });
 }
