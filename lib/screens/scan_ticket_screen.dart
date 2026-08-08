@@ -69,13 +69,13 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.card,
-        title: const Text('IA visuelle en ligne (Gemini)', style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text('IA visuelle en ligne (Groq)', style: TextStyle(color: AppColors.textPrimary)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Renseigne ta clé API Gemini personnelle et gratuite pour une analyse '
+              'Renseigne ta clé API Groq personnelle et gratuite pour une analyse '
               'beaucoup plus fiable (marque, montant, catégorie).',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
@@ -84,11 +84,11 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
               controller: controller,
               obscureText: true,
               style: const TextStyle(color: AppColors.textPrimary),
-              decoration: const InputDecoration(labelText: 'Clé API Gemini'),
+              decoration: const InputDecoration(labelText: 'Clé API Groq'),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Clé gratuite à obtenir sur aistudio.google.com/apikey',
+              'Clé gratuite à obtenir sur console.groq.com/keys',
               style: TextStyle(color: AppColors.green, fontSize: 12),
             ),
           ],
@@ -168,7 +168,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       } catch (e) {
         debugPrint('IA en ligne indisponible, repli sur l\'analyse locale : $e');
         setState(() {
-          _error = 'Erreur IA Gemini : $e (Basculement en local)';
+          _error = 'Erreur IA Groq : $e (Basculement en local)';
         });
       }
     }
@@ -335,7 +335,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         title: const Text('Scanner un ticket'),
         actions: [
           IconButton(
-            tooltip: 'Configurer la clé API Gemini',
+            tooltip: 'Configurer la clé API Groq',
             icon: Icon(
               Icons.key,
               color: hasKey ? AppColors.green : AppColors.textSecondary,
@@ -398,7 +398,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             const Text(
-                              'AI Gemini',
+                              'AI Groq',
                               style: TextStyle(
                                 color: AppColors.textPrimary,
                                 fontWeight: FontWeight.bold,
@@ -446,7 +446,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           const SizedBox(height: 16),
                           Text(
                             _useGemini 
-                              ? 'Mode IA Gemini activé.\nPrends en photo ton ticket.'
+                              ? 'Mode IA Groq activé.\nPrends en photo ton ticket.'
                               : 'Mode IA Locale activé (Hors-ligne).\nPrends en photo ton ticket.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: AppColors.textSecondary),
