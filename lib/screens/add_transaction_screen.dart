@@ -8,6 +8,7 @@ import '../models/transaction.dart';
 import '../screens/scan_ticket_screen.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../models/scanned_ticket_data.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   final List<Account> accounts;
@@ -70,10 +71,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       _noteController.text = transaction.note ?? '';
       _locationController.text = transaction.location ?? '';
       _receiptImagePath = transaction.receiptImagePath;
-      _selectedAccount = widget.accounts.firstWhere(
-        (a) => a.id == transaction.accountId,
-        orElse: () => widget.accounts.first,
-      );
+      _selectedAccount = widget.accounts.isNotEmpty
+    ?   widget.accounts.firstWhere(
+          (a) => a.id == transaction.accountId,
+          orElse: () => widget.accounts.first,
+      )
+    : null;
     } else {
       if (widget.initialTitle != null) {
         _titleController.text = widget.initialTitle!;

@@ -1,10 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/account.dart';
 import '../models/transaction.dart';
+import '../models/scanned_ticket_data.dart';
 import '../screens/add_transaction_screen.dart';
+import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import '../services/ai_settings_service.dart';
+import '../services/ai_vision_service.dart';
 
 class ScanTicketScreen extends StatefulWidget {
   const ScanTicketScreen({
@@ -31,6 +38,65 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   bool _isProcessing = false;
   bool _isPickingImage = false;
   String? _capturedImagePath;
+  String? _geminiApiKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApiKey();
+  }
+
+  Future<void> _loadApiKey() async {
+    final key = await AISettingsService.getGeminiApiKey();
+    if (mounted) setState(() => _geminiApiKey = key);
+  }
+
+  Future<void> _openApiKeyDialog() async {
+    final controller = TextEditingController(text: _geminiApiKey ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: const Text('IA visuelle en ligne (Gemini)', style: TextStyle(color: AppColors.textPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Renseigne ta clé API Gemini personnelle et gratuite pour une analyse '
+              'beaucoup plus fiable (marque, montant, catégorie). Sans clé, OpenLedger '
+              'utilise uniquement l\'analyse locale hors ligne.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(labelText: 'Clé API Gemini'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Clé gratuite à obtenir sur aistudio.google.com/apikey',
+              style: TextStyle(color: AppColors.green, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Enregistrer', style: TextStyle(color: AppColors.green)),
+          ),
+        ],
+      ),
+    );
+
+    if (saved == true) {
+      await AISettingsService.setGeminiApiKey(controller.text);
+      await _loadApiKey();
+    }
+  }
 
   @override
   void dispose() {
@@ -75,6 +141,23 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       _capturedImagePath = pickedFile.path;
     });
 
+    if (_geminiApiKey != null && _geminiApiKey!.isNotEmpty) {
+      try {
+        final aiResult = await AIVisionService.analyze(
+          imagePath: pickedFile.path,
+          apiKey: _geminiApiKey!,
+        );
+        if (!mounted) return;
+        setState(() {
+          _ticket = aiResult;
+          _isProcessing = false;
+        });
+        return;
+      } catch (e) {
+        debugPrint('IA en ligne indisponible, repli sur l\'analyse locale : $e');
+      }
+    }
+
     try {
       final inputImage = InputImage.fromFilePath(pickedFile.path);
       final RecognizedText recognizedText = await _textRecognizer.processImage(
@@ -83,11 +166,13 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
 
       final parsedData = _parseRecognizedText(recognizedText);
 
+      if (!mounted) return;
       setState(() {
         _ticket = parsedData;
         _isProcessing = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = 'Erreur lors de l\'analyse locale du ticket : $e';
         _isProcessing = false;
@@ -138,15 +223,24 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     caseSensitive: false,
   );
 
+  static const Map<String, String> _accentMap = {
+    'à': 'a', 'â': 'a', 'ä': 'a',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'î': 'i', 'ï': 'i',
+    'ô': 'o', 'ö': 'o',
+    'ù': 'u', 'û': 'u', 'ü': 'u',
+    'ç': 'c',
+    'œ': 'oe', 'æ': 'ae',
+  };
+
   String _normalize(String text) {
-    var result = text.toLowerCase();
-    result = result.replaceAll(RegExp(r'[àâä]'), 'a');
-    result = result.replaceAll(RegExp(r'[éèêë]'), 'e');
-    result = result.replaceAll(RegExp(r'[îï]'), 'i');
-    result = result.replaceAll(RegExp(r'[ôö]'), 'o');
-    result = result.replaceAll(RegExp(r'[ùûü]'), 'u');
-    result = result.replaceAll(RegExp(r'[ç]'), 'c');
-    return result.trim();
+    final lower = text.toLowerCase();
+    final buffer = StringBuffer();
+    for (final rune in lower.runes) {
+      final char = String.fromCharCode(rune);
+      buffer.write(_accentMap[char] ?? char);
+    }
+    return buffer.toString().trim();
   }
 
   ({String? name, String? category}) _detectBrand(List<String> lines) {
@@ -154,7 +248,8 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       final normalized = _normalize(line);
       for (final entry in _brandCategories.entries) {
         if (normalized.contains(entry.key.trim())) {
-          return (name: _toDisplayName(entry.key.trim()), category: entry.value);
+          final matchedCategory = kCategories.contains(entry.value) ? entry.value : (kCategories.isNotEmpty ? kCategories.first : 'Autre');
+          return (name: _toDisplayName(entry.key.trim()), category: matchedCategory);
         }
       }
     }
@@ -162,15 +257,9 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   }
 
   String _toDisplayName(String key) {
-    if (key.isEmpty) return key;
     return key
         .split(' ')
-        .map((w) {
-          if (w.isEmpty) return w;
-          final firstLetter = w.substring(0, 1).toUpperCase();
-          final rest = w.length > 1 ? w.substring(1) : '';
-          return '$firstLetter$rest';
-        })
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
         .join(' ');
   }
 
@@ -190,10 +279,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     final fullText = _normalize(lines.join(' '));
     for (final entry in _categoryKeywordFallback.entries) {
       if (entry.value.any((kw) => fullText.contains(kw))) {
-        return entry.key;
+        if (kCategories.contains(entry.key)) {
+          return entry.key;
+        }
       }
     }
-    return 'Autre';
+    return kCategories.isNotEmpty ? kCategories.first : 'Autre';
   }
 
   static const List<String> _totalKeywordsPriority = [
@@ -232,16 +323,10 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   String? _detectLocation(List<String> lines) {
     final regExp = RegExp(r'\b(\d{5})\s+([A-ZÀ-Ü][A-Za-zÀ-ÿ\-\s]{1,25})\b');
     for (final line in lines) {
-      try {
-        final match = regExp.firstMatch(line);
-        if (match != null && match.groupCount >= 2) {
-          final code = match.group(1);
-          final city = match.group(2);
-          if (code != null && city != null) {
-            return '$code ${city.trim()}';
-          }
-        }
-      } catch (_) {}
+      final match = regExp.firstMatch(line);
+      if (match != null) {
+        return '${match.group(1)} ${match.group(2)!.trim()}';
+      }
     }
     return null;
   }
@@ -285,17 +370,15 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       date: date ?? DateTime.now(),
       category: category,
       location: location,
+      source: TicketSource.local,
     );
   }
 
   double? _extractNumber(String text) {
     final regExp = RegExp(r'(\d+[\.,]\d{2})');
     final match = regExp.firstMatch(text.replaceAll(' ', ''));
-    if (match != null && match.groupCount >= 1) {
-      final valStr = match.group(1);
-      if (valStr != null) {
-        return double.tryParse(valStr.replaceAll(',', '.'));
-      }
+    if (match != null) {
+      return double.tryParse(match.group(1)!.replaceAll(',', '.'));
     }
     return null;
   }
@@ -303,12 +386,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   DateTime? _parseDate(String text) {
     final regExp = RegExp(r'(\d{2})[./-](\d{2})[./-](\d{2,4})');
     final match = regExp.firstMatch(text);
-    if (match != null && match.groupCount >= 3) {
+    if (match != null) {
+      final day = int.parse(match.group(1)!);
+      final month = int.parse(match.group(2)!);
+      var year = int.parse(match.group(3)!);
+      if (year < 100) year += 2000;
       try {
-        final day = int.parse(match.group(1)!);
-        final month = int.parse(match.group(2)!);
-        var year = int.parse(match.group(3)!);
-        if (year < 100) year += 2000;
         return DateTime(year, month, day);
       } catch (_) {}
     }
@@ -355,7 +438,21 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scanner un ticket (IA Locale)')),
+      appBar: AppBar(
+        title: const Text('Scanner un ticket'),
+        actions: [
+          IconButton(
+            tooltip: 'Configurer l\'IA en ligne (Gemini)',
+            icon: Icon(
+              Icons.auto_awesome,
+              color: (_geminiApiKey != null && _geminiApiKey!.isNotEmpty)
+                  ? AppColors.green
+                  : AppColors.textSecondary,
+            ),
+            onPressed: _openApiKeyDialog,
+          ),
+        ],
+      ),
       backgroundColor: AppColors.background,
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -371,7 +468,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           CircularProgressIndicator(color: AppColors.green),
                           SizedBox(height: 16),
                           Text(
-                            'Analyse du ticket par l\'IA locale...',
+                            'Analyse du ticket en cours...',
                             style: TextStyle(color: AppColors.textSecondary),
                           ),
                         ],
@@ -394,24 +491,36 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(color: AppColors.textSecondary),
                           ),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: _captureAndProcessTicket,
-                            icon: const Icon(Icons.camera_alt),
-                            label: const Text('Prendre en photo le ticket'),
-                          ),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                            onPressed: _pickFromGalleryAndProcessTicket,
-                            icon: const Icon(Icons.photo_library_outlined),
-                            label: const Text('Importer une photo depuis la galerie'),
-                          ),
-                          const SizedBox(height: 12),
-                          TextButton.icon(
-                            onPressed: _openManualEntry,
-                            icon: const Icon(Icons.edit_outlined),
-                            label: const Text('Ajouter les informations manuellement'),
-                          ),
+                           const SizedBox(height: 24),
+                           ElevatedButton.icon(
+                             onPressed: _captureAndProcessTicket,
+                             icon: const Icon(Icons.camera_alt),
+                             label: const Text('Prendre en photo le ticket'),
+                           ),
+                           const SizedBox(height: 12),
+                           OutlinedButton.icon(
+                             onPressed: _pickFromGalleryAndProcessTicket,
+                             icon: const Icon(Icons.photo_library_outlined),
+                             label: const Text('Importer une photo depuis la galerie'),
+                           ),
+                           const SizedBox(height: 12),
+                           TextButton.icon(
+                             onPressed: _openManualEntry,
+                             icon: const Icon(Icons.edit_outlined),
+                             label: const Text('Ajouter les informations manuellement'),
+                           ),
+                           if (_geminiApiKey == null || _geminiApiKey!.isEmpty) ...[
+                             const SizedBox(height: 20),
+                             TextButton.icon(
+                               onPressed: _openApiKeyDialog,
+                               icon: const Icon(Icons.auto_awesome, size: 18),
+                               label: const Text(
+                                 'Activer une IA en ligne gratuite\npour une meilleure précision',
+                                 textAlign: TextAlign.center,
+                                 style: TextStyle(fontSize: 12),
+                               ),
+                             ),
+                           ],
                         ],
                       ),
                     ),
@@ -462,13 +571,35 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Informations détectées :',
-            style: TextStyle(
-              color: AppColors.green,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Informations détectées :',
+                  style: TextStyle(
+                    color: AppColors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (ticket.source == TicketSource.ai ? AppColors.green : AppColors.textSecondary)
+                      .withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  ticket.source == TicketSource.ai ? 'IA en ligne' : 'Analyse locale',
+                  style: TextStyle(
+                    color: ticket.source == TicketSource.ai ? AppColors.green : AppColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           _buildPreviewRow('Nom / Titre', ticket.title),
@@ -514,20 +645,4 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       ),
     );
   }
-}
-
-class ScannedTicketData {
-  final String title;
-  final DateTime? date;
-  final double? amount;
-  final String? category;
-  final String? location;
-
-  const ScannedTicketData({
-    required this.title,
-    this.date,
-    this.amount,
-    this.category,
-    this.location,
-  });
 }
