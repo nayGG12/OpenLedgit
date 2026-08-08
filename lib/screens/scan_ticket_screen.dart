@@ -139,12 +139,13 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   );
 
   String _normalize(String text) {
-    const withAccents = 'àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ';
-    const withoutAccents = 'aaaeeeeiioouucAAAEEEEIIOOUUC';
     var result = text.toLowerCase();
-    for (var i = 0; i < withAccents.length; i++) {
-      result = result.replaceAll(withAccents[i], withoutAccents[i]);
-    }
+    result = result.replaceAll(RegExp(r'[àâä]'), 'a');
+    result = result.replaceAll(RegExp(r'[éèêë]'), 'e');
+    result = result.replaceAll(RegExp(r'[îï]'), 'i');
+    result = result.replaceAll(RegExp(r'[ôö]'), 'o');
+    result = result.replaceAll(RegExp(r'[ùûü]'), 'u');
+    result = result.replaceAll(RegExp(r'[ç]'), 'c');
     return result.trim();
   }
 
@@ -166,7 +167,9 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         .split(' ')
         .map((w) {
           if (w.isEmpty) return w;
-          return '${w[0].toUpperCase()}${w.length > 1 ? w.substring(1) : ''}';
+          final firstLetter = w.substring(0, 1).toUpperCase();
+          final rest = w.length > 1 ? w.substring(1) : '';
+          return '$firstLetter$rest';
         })
         .join(' ');
   }
@@ -229,10 +232,16 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   String? _detectLocation(List<String> lines) {
     final regExp = RegExp(r'\b(\d{5})\s+([A-ZÀ-Ü][A-Za-zÀ-ÿ\-\s]{1,25})\b');
     for (final line in lines) {
-      final match = regExp.firstMatch(line);
-      if (match != null) {
-        return '${match.group(1)} ${match.group(2)!.trim()}';
-      }
+      try {
+        final match = regExp.firstMatch(line);
+        if (match != null && match.groupCount >= 2) {
+          final code = match.group(1);
+          final city = match.group(2);
+          if (code != null && city != null) {
+            return '$code ${city.trim()}';
+          }
+        }
+      } catch (_) {}
     }
     return null;
   }
@@ -282,8 +291,11 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   double? _extractNumber(String text) {
     final regExp = RegExp(r'(\d+[\.,]\d{2})');
     final match = regExp.firstMatch(text.replaceAll(' ', ''));
-    if (match != null) {
-      return double.tryParse(match.group(1)!.replaceAll(',', '.'));
+    if (match != null && match.groupCount >= 1) {
+      final valStr = match.group(1);
+      if (valStr != null) {
+        return double.tryParse(valStr.replaceAll(',', '.'));
+      }
     }
     return null;
   }
@@ -291,12 +303,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   DateTime? _parseDate(String text) {
     final regExp = RegExp(r'(\d{2})[./-](\d{2})[./-](\d{2,4})');
     final match = regExp.firstMatch(text);
-    if (match != null) {
-      final day = int.parse(match.group(1)!);
-      final month = int.parse(match.group(2)!);
-      var year = int.parse(match.group(3)!);
-      if (year < 100) year += 2000;
+    if (match != null && match.groupCount >= 3) {
       try {
+        final day = int.parse(match.group(1)!);
+        final month = int.parse(match.group(2)!);
+        var year = int.parse(match.group(3)!);
+        if (year < 100) year += 2000;
         return DateTime(year, month, day);
       } catch (_) {}
     }
