@@ -1,26 +1,43 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 import '../models/scanned_ticket_data.dart';
 import '../models/transaction.dart';
 
 /// Analyse un ticket de caisse via un modèle de vision hébergé sur Groq.
 ///
-/// Le modèle qwen/qwen3.6-27b supporte un vrai "JSON mode" côté Groq
-/// (response_format: json_object) : la réponse est garantie d'être un JSON
-/// syntaxiquement valide, ce qui élimine la quasi-totalité des erreurs de
-/// parsing qu'on avait avant (texte parasite, balises ```json, phrases
-/// d'excuse du modèle, etc.).
-///
-/// Note : Groq documente ce modèle comme "preview" (évaluation), pas encore
-/// garanti "production" à long terme — à surveiller si Groq le remplace.
+/// Le tier gratuit de Groq est limité en TPM/RPM/RPD. Cette version essaie
+/// de maximiser les chances qu'une photo passe malgré tout :
+/// - image compressée fortement (un ticket reste lisible à basse résolution)
+/// - anti-rafale local (évite de déclencher la limite bêtement par double-tap)
+/// - retry adaptatif : image encore plus compressée si la limite est "par
+///   minute" (souvent ça suffit à repasser sous le quota restant), pas de
+///   retry inutile si la limite est "par jour".
 class AIVisionService {
   static const String _model = 'qwen/qwen3.6-27b';
   static const String _url = 'https://api.groq.com/openai/v1/chat/completions';
 
-  /// Instructions système : schéma JSON strict et fermé.
-  /// Le champ "readable" évite l'ancien piège du texte libre "Ticket illisible"
-  /// (qui cassait le parsing JSON) : on reste TOUJOURS dans un JSON valide,
-  /// y compris quand le ticket n'est pas exploitable.
+  // Taille "normale" d'envoi à l'IA. Ceci ne concerne QUE la copie en mémoire
+  // envoyée à Groq : le fichier original du reçu (sauvegardé en local par
+  // AddTransactionScreen) n'est jamais modifié ni relu depuis cette classe.
+  // Un ticket de caisse reste lisible par l'IA à des tailles très réduites
+  // (c'est du texte simple, pas une photo de paysage), donc on compresse fort.
+  static const int _maxImageWidth = 900;
+  static const int _jpegQuality = 60;
+
+  // Taille de secours, utilisée uniquement en cas de retry après un 429
+  // "tokens per minute" : encore plus petite, pour tenter de passer sous
+  // le quota restant de la fenêtre en cours.
+  static const int _fallbackImageWidth = 650;
+  static const int _fallbackJpegQuality = 45;
+
+  // Anti-rafale : on n'autorise pas plus d'un appel toutes les X secondes,
+  // pour éviter de déclencher le rate limit à cause d'un double-tap ou
+  // d'un enchaînement rapide de scans.
+  static const Duration _minDelayBetweenCalls = Duration(seconds: 5);
+  static DateTime? _lastCallAt;
+
   static const String _systemPrompt = '''
 Tu es un extracteur strict de données de tickets de caisse à partir d'une photo.
 Tu dois répondre UNIQUEMENT avec un objet JSON valide, sans aucun texte autour,
@@ -49,28 +66,70 @@ Règles impératives, à respecter dans l'ordre :
   static const String _userInstruction =
       'Voici la photo d\'un ticket de caisse. Analyse-la et réponds avec le JSON demandé, rien d\'autre.';
 
-  /// Lance l'analyse avec un retry automatique : si la première réponse
-  /// n'est pas un JSON exploitable, on retente une fois avant d'abandonner
-  /// (l'appelant bascule alors sur l'analyse locale).
+  /// Lance l'analyse. Applique un anti-rafale, puis gère le rate limit Groq
+  /// intelligemment selon son type (minute vs jour) avant, si besoin,
+  /// de laisser l'appelant basculer sur l'analyse locale.
   static Future<ScannedTicketData> analyze({
     required String imagePath,
     required String apiKey,
   }) async {
-    final bytes = await File(imagePath).readAsBytes();
-    final base64Image = base64Encode(bytes);
+    await _respectLocalCooldown();
 
-    Object? lastError;
-    for (var attempt = 1; attempt <= 2; attempt++) {
-      try {
-        return await _requestOnce(base64Image: base64Image, apiKey: apiKey);
-      } catch (e) {
-        lastError = e;
-        // On ne retente que si ça vaut le coup (erreur de format/parsing) ;
-        // pas la peine de retenter sur un ticket explicitement illisible.
-        if (e is _UnreadableTicketException) rethrow;
+    final bytes = await File(imagePath).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+
+    final normalImage = _encode(decoded, bytes, _maxImageWidth, _jpegQuality);
+
+    try {
+      _lastCallAt = DateTime.now();
+      return await _requestOnce(base64Image: normalImage, apiKey: apiKey);
+    } on RateLimitException catch (e) {
+      switch (e.scope) {
+        case RateLimitScope.perDay:
+          // Aucun retry utile : le quota ne reviendra pas avant le reset journalier.
+          rethrow;
+
+        case RateLimitScope.perMinuteOrUnknown:
+          // Une image plus petite consomme moins de tokens : on tente de
+          // repasser sous le quota restant de la fenêtre en cours.
+          final smallerImage =
+              _encode(decoded, bytes, _fallbackImageWidth, _fallbackJpegQuality);
+
+          if (e.retryAfterSeconds != null && e.retryAfterSeconds! <= 8) {
+            await Future.delayed(Duration(seconds: e.retryAfterSeconds!));
+          }
+
+          _lastCallAt = DateTime.now();
+          return await _requestOnce(base64Image: smallerImage, apiKey: apiKey);
       }
+    } on _UnreadableTicketException {
+      rethrow;
+    } catch (e) {
+      // Erreur ponctuelle de parsing/format : une seule retentative.
+      _lastCallAt = DateTime.now();
+      return await _requestOnce(base64Image: normalImage, apiKey: apiKey);
     }
-    throw Exception('Échec de l\'analyse IA après 2 tentatives : $lastError');
+  }
+
+  /// Empêche deux appels trop rapprochés (double-tap, scans en rafale) qui
+  /// pourraient à eux seuls déclencher la limite par minute côté Groq.
+  static Future<void> _respectLocalCooldown() async {
+    final last = _lastCallAt;
+    if (last == null) return;
+    final elapsed = DateTime.now().difference(last);
+    if (elapsed < _minDelayBetweenCalls) {
+      await Future.delayed(_minDelayBetweenCalls - elapsed);
+    }
+  }
+
+  /// Prépare l'image pour l'IA : lecture SEULE du fichier (jamais de réécriture),
+  /// redimensionnement + recompression en mémoire. Le fichier original du reçu,
+  /// utilisé ailleurs dans l'app pour l'affichage/la sauvegarde du reçu, n'est
+  /// jamais touché ni recompressé par cette classe.
+  static String _encode(img.Image? decoded, Uint8List originalBytes, int maxWidth, int quality) {
+    if (decoded == null) return base64Encode(originalBytes);
+    final resized = decoded.width > maxWidth ? img.copyResize(decoded, width: maxWidth) : decoded;
+    return base64Encode(img.encodeJpg(resized, quality: quality));
   }
 
   static Future<ScannedTicketData> _requestOnce({
@@ -101,7 +160,6 @@ Règles impératives, à respecter dans l'ordre :
         'temperature': 0,
         'top_p': 1,
         'max_completion_tokens': 500,
-        // Force une sortie JSON syntaxiquement valide côté Groq.
         'response_format': {'type': 'json_object'},
       };
 
@@ -114,8 +172,21 @@ Règles impératives, à respecter dans l'ordre :
 
       final responseBody = await response.transform(utf8.decoder).join();
 
+      if (response.statusCode == 429) {
+        final retryAfterHeader = response.headers.value('retry-after');
+        final groqMessage = _extractGroqErrorMessage(responseBody);
+        throw RateLimitException(
+          retryAfterSeconds: int.tryParse(retryAfterHeader ?? '') ??
+              _parseWaitSecondsFromMessage(groqMessage),
+          groqMessage: groqMessage,
+          scope: _detectScope(groqMessage),
+        );
+      }
+
       if (response.statusCode != HttpStatus.ok) {
-        throw Exception('Erreur API Groq (${response.statusCode}) : $responseBody');
+        throw Exception(
+          'Erreur API Groq (${response.statusCode}) : ${_extractGroqErrorMessage(responseBody) ?? responseBody}',
+        );
       }
 
       final jsonResponse = jsonDecode(responseBody);
@@ -131,10 +202,45 @@ Règles impératives, à respecter dans l'ordre :
     }
   }
 
-  /// Parse et valide strictement la réponse du modèle selon le schéma attendu.
-  /// Lève une exception explicite si un champ obligatoire est incohérent,
-  /// pour que l'appelant puisse retenter ou basculer en local plutôt que
-  /// d'enregistrer une transaction avec des données fausses.
+  /// Détermine si la limite atteinte est journalière (RPD) — auquel cas
+  /// retenter ne sert à rien avant le reset — ou par minute (TPM/RPM),
+  /// auquel cas réduire la taille de l'image peut suffire à passer.
+  static RateLimitScope _detectScope(String? message) {
+    if (message == null) return RateLimitScope.perMinuteOrUnknown;
+    final lower = message.toLowerCase();
+    if (lower.contains('per day') || lower.contains('rpd') || lower.contains('tpd')) {
+      return RateLimitScope.perDay;
+    }
+    return RateLimitScope.perMinuteOrUnknown;
+  }
+
+  static int? _parseWaitSecondsFromMessage(String? message) {
+    if (message == null) return null;
+    final match = RegExp(r'try again in\s+([\d.]+)s', caseSensitive: false)
+        .firstMatch(message);
+    if (match == null) return null;
+    final seconds = double.tryParse(match.group(1)!);
+    if (seconds == null) return null;
+    return seconds.ceil();
+  }
+
+  static String? _extractGroqErrorMessage(String responseBody) {
+    if (responseBody.trim().isEmpty) return null;
+    try {
+      final parsed = jsonDecode(responseBody);
+      // Note : on évite volontairement `parsed is Map ? ... : null` ici.
+      // Dart lit `is Map ?` comme le type nullable `Map?` (piège de syntaxe
+      // connu), ce qui casse le parsing du ternaire. On sépare donc le test
+      // de type dans un `if` distinct.
+      if (parsed is! Map) return null;
+      final message = parsed['error']?['message'];
+      if (message is! String) return null;
+      return message;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static ScannedTicketData _parseModelResponse(String rawText) {
     final jsonStr = _extractJson(rawText.trim());
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
@@ -148,9 +254,6 @@ Règles impératives, à respecter dans l'ordre :
     final category = (data['category'] as String?)?.trim();
     final rawAmount = data['amount'];
 
-    // Validation stricte : un montant qui n'est ni num ni null est un signe
-    // que le modèle n'a pas respecté le schéma -> on préfère échouer proprement
-    // (et retenter / basculer en local) plutôt que de deviner.
     if (rawAmount != null && rawAmount is! num) {
       throw Exception('Champ "amount" invalide dans la réponse IA : $rawAmount');
     }
@@ -165,9 +268,6 @@ Règles impératives, à respecter dans l'ordre :
     );
   }
 
-  /// Filet de sécurité : même avec le JSON mode de Groq, on isole strictement
-  /// le contenu entre la première { et la dernière } au cas où un modèle
-  /// ajouterait malgré tout des balises ```json autour.
   static String _extractJson(String text) {
     var cleaned = text.replaceAll('```json', '').replaceAll('```', '').trim();
     final start = cleaned.indexOf('{');
@@ -188,8 +288,35 @@ Règles impératives, à respecter dans l'ordre :
   }
 }
 
-/// Exception dédiée pour un ticket explicitement jugé illisible par l'IA
-/// (par opposition à une simple erreur technique/réseau).
+enum RateLimitScope { perMinuteOrUnknown, perDay }
+
+/// Erreur de rate limit Groq (HTTP 429).
+class RateLimitException implements Exception {
+  final int? retryAfterSeconds;
+  final String? groqMessage;
+  final RateLimitScope scope;
+
+  RateLimitException({
+    this.retryAfterSeconds,
+    this.groqMessage,
+    this.scope = RateLimitScope.perMinuteOrUnknown,
+  });
+
+  /// Message prêt à afficher à l'utilisateur (sans jargon HTTP).
+  String get friendlyMessage {
+    if (scope == RateLimitScope.perDay) {
+      return 'Quota gratuit Groq atteint pour aujourd\'hui. Réessaie demain, ou utilise l\'analyse locale en attendant.';
+    }
+    if (retryAfterSeconds != null) {
+      return 'Trop de requêtes envoyées à l\'IA en ligne, réessaie dans ${retryAfterSeconds}s.';
+    }
+    return 'Limite de requêtes Groq atteinte pour le moment (quota gratuit dépassé).';
+  }
+
+  @override
+  String toString() => 'RateLimitException(${groqMessage ?? friendlyMessage})';
+}
+
 class _UnreadableTicketException implements Exception {
   @override
   String toString() => 'Ticket jugé illisible par l\'IA';
