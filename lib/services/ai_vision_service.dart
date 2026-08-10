@@ -1,47 +1,79 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:image/image.dart' as img;
 import '../models/scanned_ticket_data.dart';
 import '../models/transaction.dart';
 
-/// Analyse un ticket de caisse via un modèle de vision hébergé sur Groq.
-///
-/// Le tier gratuit de Groq est limité en TPM/RPM/RPD. Cette version essaie
-/// de maximiser les chances qu'une photo passe malgré tout :
-/// - image compressée fortement (un ticket reste lisible à basse résolution)
-/// - anti-rafale local (évite de déclencher la limite bêtement par double-tap)
-/// - retry adaptatif : image encore plus compressée si la limite est "par
-///   minute" (souvent ça suffit à repasser sous le quota restant), pas de
-///   retry inutile si la limite est "par jour".
 class AIVisionService {
+  // Remplace l'ancien modèle par le modèle actif sur Groq :
   static const String _model = 'qwen/qwen3.6-27b';
   static const String _url = 'https://api.groq.com/openai/v1/chat/completions';
 
-  // Taille "normale" d'envoi à l'IA. Ceci ne concerne QUE la copie en mémoire
-  // envoyée à Groq : le fichier original du reçu (sauvegardé en local par
-  // AddTransactionScreen) n'est jamais modifié ni relu depuis cette classe.
-  // Un ticket de caisse reste lisible par l'IA à des tailles très réduites
-  // (c'est du texte simple, pas une photo de paysage), donc on compresse fort.
+  static String? lastRawResponse;
+
   static const int _maxImageWidth = 900;
   static const int _jpegQuality = 60;
-
-  // Taille de secours, utilisée uniquement en cas de retry après un 429
-  // "tokens per minute" : encore plus petite, pour tenter de passer sous
-  // le quota restant de la fenêtre en cours.
   static const int _fallbackImageWidth = 650;
   static const int _fallbackJpegQuality = 45;
 
-  // Anti-rafale : on n'autorise pas plus d'un appel toutes les X secondes,
-  // pour éviter de déclencher le rate limit à cause d'un double-tap ou
-  // d'un enchaînement rapide de scans.
   static const Duration _minDelayBetweenCalls = Duration(seconds: 5);
   static DateTime? _lastCallAt;
 
-  static const String _systemPrompt = '''
-Tu es un extracteur strict de données de tickets de caisse à partir d'une photo.
-Tu dois répondre UNIQUEMENT avec un objet JSON valide, sans aucun texte autour,
-sans balises markdown, sans commentaire, conforme EXACTEMENT à ce schéma :
+static const String _systemPrompt = '''
+IDENTITÉ ET RÔLE
+
+Tu n'es pas un assistant conversationnel. Tu es un moteur d'extraction de données,
+branché directement sur un parseur JSON automatique (fonction jsonDecode()).
+Personne ne lit ta réponse avant elle : elle part directement dans un programme
+qui tente de la décoder comme du JSON strict. Il n'y a aucune tolérance humaine,
+aucune relecture, aucune correction possible après coup.
+
+CONTRAT DE SORTIE (NON NÉGOCIABLE)
+
+Ta réponse ENTIÈRE doit être un unique objet JSON valide, et RIEN d'autre.
+- Le premier caractère de ta réponse doit être { (accolade ouvrante).
+- Le dernier caractère de ta réponse doit être } (accolade fermante).
+- Aucun caractère, aucun espace, aucun saut de ligne avant le { ou après le }.
+- Aucune phrase d'introduction ("Voici le résultat :", "D'accord, j'analyse...", etc.).
+- Aucune phrase de conclusion ("J'espère que ça aide", "N'hésite pas si...", etc.).
+- Aucune balise markdown (pas de ```json, pas de ```, pas de **gras**, rien).
+- Aucun commentaire, aucune note, aucune explication, même courte, même entre parenthèses.
+
+CE QUI SE PASSE SI TU NE RESPECTES PAS CE CONTRAT
+
+Le parseur JSON qui reçoit ta réponse ne comprend AUCUN texte en dehors des
+accolades. Si tu ajoutes ne serait-ce qu'un seul mot avant ou après le JSON,
+même une phrase polie ou une clarification utile, le parseur plante immédiatement
+et TOUTE ta réponse est perdue et inutilisable — y compris si les données que tu
+as extraites étaient par ailleurs parfaitement correctes. Il n'existe pas de
+version "presque conforme" : soit c'est du JSON pur et exploitable, soit c'est
+un échec complet de la tâche.
+
+EXEMPLE DE RÉPONSE INTERDITE (à ne jamais produire, même en partie) :
+D'accord, voici les informations extraites du ticket :
+{"readable": true, "title": "Carrefour", "amount": 24.5, "category": "Alimentation", "date": "2026-08-10", "location": "Paris"}
+J'espère que ça t'aide !
+
+Pourquoi c'est interdit : il y a du texte avant et après le JSON. Le parseur
+plante avant même d'atteindre la première accolade.
+
+EXEMPLE DE RÉPONSE INTERDITE (variante markdown) :
+```json
+{"readable": true, "title": "Carrefour", "amount": 24.5, "category": "Alimentation", "date": "2026-08-10", "location": "Paris"}
+```*/
+
+Pourquoi c'est interdit : les balises ```json et ``` sont des caractères en
+plus, hors du JSON lui-même.
+
+SEULE RÉPONSE ACCEPTÉE (exemple pour un ticket Carrefour de 24,50€) :
+{"readable": true, "title": "Carrefour", "amount": 24.5, "category": "Alimentation", "date": "2026-08-10", "location": "Paris"}
+
+Rien avant. Rien après. Une seule ligne ou plusieurs, peu importe, mais rien
+en dehors des deux accolades extérieures.
+
+SCHÉMA EXACT À REMPLIR
 
 {
   "readable": true,
@@ -52,23 +84,54 @@ sans balises markdown, sans commentaire, conforme EXACTEMENT à ce schéma :
   "location": "Ville visible sur le ticket, ou null"
 }
 
-Règles impératives, à respecter dans l'ordre :
-1. "readable" est un booléen. Mets false UNIQUEMENT si l'image n'est clairement pas un ticket de caisse exploitable (flou total, image sans rapport, texte totalement illisible). Dans ce cas, mets "title" à "Ticket illisible" et tous les autres champs à null.
-2. Si "readable" est true : "amount" doit être le MONTANT TOTAL TTC réellement payé par le client — jamais le sous-total, jamais la seule TVA, jamais un acompte partiel. C'est un nombre pur (12.34), sans texte, sans symbole €.
-3. "title" doit être le nom du commerce/de l'enseigne (regarde le logo, l'en-tête), jamais une ligne d'adresse, jamais un numéro de ticket ou de SIRET.
-4. "category" doit être déduite du type de commerce reconnu et vaut EXACTEMENT une des 10 valeurs listées ci-dessus, aucune autre valeur, aucune variante d'orthographe.
-5. "date" est au format AAAA-MM-JJ. Si absente du ticket, mets null.
-6. "location" est la ville si elle est visible sur le ticket, sinon null.
-7. N'invente jamais une donnée absente : mets null plutôt que de deviner un montant, une date ou une ville.
-8. Ne renvoie strictement rien d'autre que cet objet JSON : pas de phrase avant, pas de phrase après, pas d'explication.
+RÈGLES DE REMPLISSAGE, CHAMP PAR CHAMP
+
+1. "readable" (booléen, obligatoire)
+   - true si le ticket est exploitable, même partiellement.
+   - false UNIQUEMENT si l'image n'est clairement pas un ticket de caisse
+     exploitable (flou total, image sans rapport, texte totalement illisible).
+   - Si false : mets "title" à "Ticket illisible" et TOUS les autres champs
+     (amount, date, location) à null. category reste "Autre".
+
+2. "title" (string, obligatoire)
+   - Le nom du commerce/de l'enseigne, regardé sur le logo ou l'en-tête.
+   - Jamais une ligne d'adresse, jamais un numéro de ticket, jamais un SIRET.
+
+3. "amount" (nombre ou null)
+   - Le MONTANT TOTAL TTC réellement payé par le client.
+   - Jamais le sous-total, jamais la seule ligne de TVA, jamais un acompte partiel.
+   - Un nombre pur, avec un point décimal (12.34), jamais de virgule, jamais
+     de symbole €, jamais de texte autour.
+   - Si aucun total n'est identifiable avec certitude : null (ne jamais deviner).
+
+4. "category" (string, obligatoire)
+   - Exactement une des 10 valeurs listées dans le schéma, aucune autre valeur,
+     aucune variante d'orthographe, aucune traduction, aucune invention.
+   - Déduite du type de commerce reconnu (ex: supermarché → Alimentation,
+     station essence → Transport, pharmacie → Santé, magasin de vêtements → Shopping).
+
+5. "date" (string au format AAAA-MM-JJ, ou null)
+   - Si absente ou illisible sur le ticket : null.
+
+6. "location" (string ou null)
+   - La ville si elle est visible sur le ticket (souvent près du code postal).
+   - Sinon : null.
+
+7. Principe général : ne jamais inventer une donnée absente. null est toujours
+   préférable à une valeur devinée. Une donnée fausse est pire qu'une donnée
+   manquante.
+
+DERNIER RAPPEL AVANT DE RÉPONDRE
+
+Relis mentalement ta réponse avant de l'envoyer : est-ce que le tout premier
+caractère est { ? Est-ce que le tout dernier caractère est } ? Y a-t-il un seul
+mot, un seul espace, une seule balise en dehors de ces deux accolades ? Si oui,
+supprime-le avant de répondre. Ta réponse finale ne contient RIEN d'autre que
+l'objet JSON.
 ''';
 
-  static const String _userInstruction =
-      'Voici la photo d\'un ticket de caisse. Analyse-la et réponds avec le JSON demandé, rien d\'autre.';
+  static const String _userInstruction = 'Analyse ce ticket de caisse et renvoie uniquement le JSON demandé.';
 
-  /// Lance l'analyse. Applique un anti-rafale, puis gère le rate limit Groq
-  /// intelligemment selon son type (minute vs jour) avant, si besoin,
-  /// de laisser l'appelant basculer sur l'analyse locale.
   static Future<ScannedTicketData> analyze({
     required String imagePath,
     required String apiKey,
@@ -77,7 +140,6 @@ Règles impératives, à respecter dans l'ordre :
 
     final bytes = await File(imagePath).readAsBytes();
     final decoded = img.decodeImage(bytes);
-
     final normalImage = _encode(decoded, bytes, _maxImageWidth, _jpegQuality);
 
     try {
@@ -86,33 +148,23 @@ Règles impératives, à respecter dans l'ordre :
     } on RateLimitException catch (e) {
       switch (e.scope) {
         case RateLimitScope.perDay:
-          // Aucun retry utile : le quota ne reviendra pas avant le reset journalier.
           rethrow;
-
         case RateLimitScope.perMinuteOrUnknown:
-          // Une image plus petite consomme moins de tokens : on tente de
-          // repasser sous le quota restant de la fenêtre en cours.
-          final smallerImage =
-              _encode(decoded, bytes, _fallbackImageWidth, _fallbackJpegQuality);
-
+          final smallerImage = _encode(decoded, bytes, _fallbackImageWidth, _fallbackJpegQuality);
           if (e.retryAfterSeconds != null && e.retryAfterSeconds! <= 8) {
             await Future.delayed(Duration(seconds: e.retryAfterSeconds!));
           }
-
           _lastCallAt = DateTime.now();
           return await _requestOnce(base64Image: smallerImage, apiKey: apiKey);
       }
     } on _UnreadableTicketException {
       rethrow;
     } catch (e) {
-      // Erreur ponctuelle de parsing/format : une seule retentative.
       _lastCallAt = DateTime.now();
       return await _requestOnce(base64Image: normalImage, apiKey: apiKey);
     }
   }
 
-  /// Empêche deux appels trop rapprochés (double-tap, scans en rafale) qui
-  /// pourraient à eux seuls déclencher la limite par minute côté Groq.
   static Future<void> _respectLocalCooldown() async {
     final last = _lastCallAt;
     if (last == null) return;
@@ -122,10 +174,6 @@ Règles impératives, à respecter dans l'ordre :
     }
   }
 
-  /// Prépare l'image pour l'IA : lecture SEULE du fichier (jamais de réécriture),
-  /// redimensionnement + recompression en mémoire. Le fichier original du reçu,
-  /// utilisé ailleurs dans l'app pour l'affichage/la sauvegarde du reçu, n'est
-  /// jamais touché ni recompressé par cette classe.
   static String _encode(img.Image? decoded, Uint8List originalBytes, int maxWidth, int quality) {
     if (decoded == null) return base64Encode(originalBytes);
     final resized = decoded.width > maxWidth ? img.copyResize(decoded, width: maxWidth) : decoded;
@@ -158,8 +206,8 @@ Règles impératives, à respecter dans l'ordre :
           },
         ],
         'temperature': 0,
-        'top_p': 1,
         'max_completion_tokens': 500,
+        // Force l'API à renvoyer du JSON structuré si supporté par le endpoint
         'response_format': {'type': 'json_object'},
       };
 
@@ -176,17 +224,14 @@ Règles impératives, à respecter dans l'ordre :
         final retryAfterHeader = response.headers.value('retry-after');
         final groqMessage = _extractGroqErrorMessage(responseBody);
         throw RateLimitException(
-          retryAfterSeconds: int.tryParse(retryAfterHeader ?? '') ??
-              _parseWaitSecondsFromMessage(groqMessage),
+          retryAfterSeconds: int.tryParse(retryAfterHeader ?? '') ?? _parseWaitSecondsFromMessage(groqMessage),
           groqMessage: groqMessage,
           scope: _detectScope(groqMessage),
         );
       }
 
       if (response.statusCode != HttpStatus.ok) {
-        throw Exception(
-          'Erreur API Groq (${response.statusCode}) : ${_extractGroqErrorMessage(responseBody) ?? responseBody}',
-        );
+        throw Exception('Erreur API Groq (${response.statusCode}) : ${_extractGroqErrorMessage(responseBody) ?? responseBody}');
       }
 
       final jsonResponse = jsonDecode(responseBody);
@@ -196,15 +241,25 @@ Règles impératives, à respecter dans l'ordre :
         throw Exception('Réponse vide de l\'IA Groq');
       }
 
+      lastRawResponse = rawText;
+      _logRawResponse(rawText);
+
       return _parseModelResponse(rawText);
     } finally {
       httpClient.close();
     }
   }
 
-  /// Détermine si la limite atteinte est journalière (RPD) — auquel cas
-  /// retenter ne sert à rien avant le reset — ou par minute (TPM/RPM),
-  /// auquel cas réduire la taille de l'image peut suffire à passer.
+  static void _logRawResponse(String rawText) {
+    const chunkSize = 800;
+    debugPrint('┌── [AIVisionService] RÉPONSE BRUTE GROQ (${rawText.length} caractères) ──');
+    for (var i = 0; i < rawText.length; i += chunkSize) {
+      final end = (i + chunkSize < rawText.length) ? i + chunkSize : rawText.length;
+      debugPrint(rawText.substring(i, end));
+    }
+    debugPrint('└── FIN RÉPONSE BRUTE GROQ ──');
+  }
+
   static RateLimitScope _detectScope(String? message) {
     if (message == null) return RateLimitScope.perMinuteOrUnknown;
     final lower = message.toLowerCase();
@@ -216,34 +271,35 @@ Règles impératives, à respecter dans l'ordre :
 
   static int? _parseWaitSecondsFromMessage(String? message) {
     if (message == null) return null;
-    final match = RegExp(r'try again in\s+([\d.]+)s', caseSensitive: false)
-        .firstMatch(message);
+    final match = RegExp(r'try again in\s+([\d.]+)s', caseSensitive: false).firstMatch(message);
     if (match == null) return null;
     final seconds = double.tryParse(match.group(1)!);
-    if (seconds == null) return null;
-    return seconds.ceil();
+    return seconds?.ceil();
   }
 
   static String? _extractGroqErrorMessage(String responseBody) {
     if (responseBody.trim().isEmpty) return null;
     try {
       final parsed = jsonDecode(responseBody);
-      // Note : on évite volontairement `parsed is Map ? ... : null` ici.
-      // Dart lit `is Map ?` comme le type nullable `Map?` (piège de syntaxe
-      // connu), ce qui casse le parsing du ternaire. On sépare donc le test
-      // de type dans un `if` distinct.
       if (parsed is! Map) return null;
       final message = parsed['error']?['message'];
-      if (message is! String) return null;
-      return message;
+      return message is String ? message : null;
     } catch (_) {
       return null;
     }
   }
 
   static ScannedTicketData _parseModelResponse(String rawText) {
-    final jsonStr = _extractJson(rawText.trim());
-    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final jsonStr = _extractJson(rawText);
+    late final Map<String, dynamic> data;
+    try {
+      data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    } catch (e) {
+      throw AIResponseFormatException(
+        rawResponse: rawText,
+        reason: 'Impossible de décoder le JSON extrait : $e',
+      );
+    }
 
     final readable = data['readable'];
     if (readable == false) {
@@ -255,7 +311,10 @@ Règles impératives, à respecter dans l'ordre :
     final rawAmount = data['amount'];
 
     if (rawAmount != null && rawAmount is! num) {
-      throw Exception('Champ "amount" invalide dans la réponse IA : $rawAmount');
+      throw AIResponseFormatException(
+        rawResponse: rawText,
+        reason: 'Champ "amount" invalide dans la réponse IA : $rawAmount',
+      );
     }
 
     return ScannedTicketData(
@@ -268,14 +327,56 @@ Règles impératives, à respecter dans l'ordre :
     );
   }
 
+  /// Isole le premier objet JSON complet dans la réponse. En cas d'échec
+  /// (aucune accolade, JSON tronqué), on lève une AIResponseFormatException
+  /// AVEC le texte brut à l'intérieur — jamais de fallback silencieux qui
+  /// fabriquerait une fausse donnée "propre" : ça masquerait le problème
+  /// et empêcherait le bouton "voir la réponse brute" de s'afficher côté UI.
   static String _extractJson(String text) {
-    var cleaned = text.replaceAll('```json', '').replaceAll('```', '').trim();
-    final start = cleaned.indexOf('{');
-    final end = cleaned.lastIndexOf('}');
-    if (start == -1 || end == -1 || end < start) {
-      throw Exception('Format de réponse JSON invalide : $text');
+    final cleaned = text.replaceAll('```json', '').replaceAll('```', '');
+    final startIndex = cleaned.indexOf('{');
+
+    if (startIndex == -1) {
+      throw AIResponseFormatException(
+        rawResponse: text,
+        reason: 'Aucune accolade ouvrante "{" trouvée dans la réponse',
+      );
     }
-    return cleaned.substring(start, end + 1);
+
+    var depth = 0;
+    var inString = false;
+    var escapeNext = false;
+
+    for (var i = startIndex; i < cleaned.length; i++) {
+      final char = cleaned[i];
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (char == '\\') {
+        escapeNext = true;
+        continue;
+      }
+      if (char == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+
+      if (char == '{') {
+        depth++;
+      } else if (char == '}') {
+        depth--;
+        if (depth == 0) {
+          return cleaned.substring(startIndex, i + 1);
+        }
+      }
+    }
+
+    throw AIResponseFormatException(
+      rawResponse: text,
+      reason: 'Accolade fermante "}" jamais trouvée (JSON tronqué ?)',
+    );
   }
 
   static DateTime? _parseIsoDate(String? value) {
@@ -290,27 +391,17 @@ Règles impératives, à respecter dans l'ordre :
 
 enum RateLimitScope { perMinuteOrUnknown, perDay }
 
-/// Erreur de rate limit Groq (HTTP 429).
 class RateLimitException implements Exception {
   final int? retryAfterSeconds;
   final String? groqMessage;
   final RateLimitScope scope;
 
-  RateLimitException({
-    this.retryAfterSeconds,
-    this.groqMessage,
-    this.scope = RateLimitScope.perMinuteOrUnknown,
-  });
+  RateLimitException({this.retryAfterSeconds, this.groqMessage, this.scope = RateLimitScope.perMinuteOrUnknown});
 
-  /// Message prêt à afficher à l'utilisateur (sans jargon HTTP).
   String get friendlyMessage {
-    if (scope == RateLimitScope.perDay) {
-      return 'Quota gratuit Groq atteint pour aujourd\'hui. Réessaie demain, ou utilise l\'analyse locale en attendant.';
-    }
-    if (retryAfterSeconds != null) {
-      return 'Trop de requêtes envoyées à l\'IA en ligne, réessaie dans ${retryAfterSeconds}s.';
-    }
-    return 'Limite de requêtes Groq atteinte pour le moment (quota gratuit dépassé).';
+    if (scope == RateLimitScope.perDay) return 'Quota gratuit Groq atteint pour aujourd\'hui.';
+    if (retryAfterSeconds != null) return 'Trop de requêtes, réessaie dans ${retryAfterSeconds}s.';
+    return 'Limite de requêtes Groq atteinte.';
   }
 
   @override
@@ -320,4 +411,16 @@ class RateLimitException implements Exception {
 class _UnreadableTicketException implements Exception {
   @override
   String toString() => 'Ticket jugé illisible par l\'IA';
+}
+
+class AIResponseFormatException implements Exception {
+  final String rawResponse;
+  final String reason;
+
+  AIResponseFormatException({required this.rawResponse, required this.reason});
+
+  String get detailedMessage => 'Erreur de formatage IA : $reason';
+
+  @override
+  String toString() => 'AIResponseFormatException($reason)';
 }

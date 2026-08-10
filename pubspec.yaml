@@ -48,13 +48,3 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/img/logo.png"
   min_sdk_android: 21
-
-# Configuration de l'écran de chargement avec un fond 100% noir
-flutter_native_splash:
-  color: "#000000"
-  image: "assets/img/logo.png"
-  branding: null
-  android_12:
-    color: "#000000"
-    image: "assets/img/logo.png"
-  web: false

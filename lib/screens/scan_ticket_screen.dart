@@ -1,4 +1,4 @@
-// [source: 28]
+// [source: 7, 28]
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -41,7 +41,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   String? _capturedImagePath;
   String? _geminiApiKey;
   
-  // Variable pour choisir entre l'IA Gemini en ligne et l'IA locale
+  // Variable pour choisir entre l'IA Groq en ligne et l'IA locale
   bool _useGemini = true; 
 
   @override
@@ -152,7 +152,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       _capturedImagePath = pickedFile.path;
     });
 
-    // Si l'utilisateur a choisi Gemini et qu'une clé est présente
+    // Si l'utilisateur a choisi l'IA Groq et qu'une clé est présente
     if (_useGemini && _geminiApiKey != null && _geminiApiKey!.isNotEmpty) {
       try {
         final aiResult = await AIVisionService.analyze(
@@ -162,6 +162,16 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         if (!mounted) return;
         setState(() {
           _ticket = aiResult;
+          _isProcessing = false;
+        });
+        return;
+      } on AIResponseFormatException catch (e) {
+        debugPrint('❌ [ScanTicketScreen] AIResponseFormatException : ${e.reason}');
+        debugPrint('📄 Réponse brute reçue :\n${e.rawResponse}');
+
+        if (!mounted) return;
+        setState(() {
+          _error = e.detailedMessage;
           _isProcessing = false;
         });
         return;
@@ -196,7 +206,59 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     }
   }
 
-  // (Toutes les fonctions de parsing et _brandCategories restent inchangées ici...)
+  // Pop-up pour afficher et copier la réponse brute complète de Groq (ainsi que l'erreur)
+  void _showRawResponsePopup(String rawResponse) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.card,
+        title: const Text('Détails et réponse brute', style: TextStyle(color: AppColors.textPrimary)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_error != null) ...[
+                  const Text(
+                    'Message d\'erreur :',
+                    style: TextStyle(color: AppColors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    _error!,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                const Text(
+                  'Réponse brute de Groq :',
+                  style: TextStyle(color: AppColors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  rawResponse.isEmpty ? 'Aucune réponse brute disponible.' : rawResponse,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer', style: TextStyle(color: AppColors.green)),
+          ),
+        ],
+      ),
+    );
+  }
+
   static const Map<String, String> _brandCategories = {
     'carrefour': 'Alimentation', 'leclerc': 'Alimentation', 'e.leclerc': 'Alimentation',
     'auchan': 'Alimentation', 'intermarche': 'Alimentation', 'lidl': 'Alimentation',
@@ -350,7 +412,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- BOUTON DE SÉLECTION AI LOCAL / AI GEMINI ---
+            // --- BOUTON DE SÉLECTION AI LOCAL / AI GROQ ---
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -474,7 +536,31 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                     ),
             ),
             if (_error != null) ...[
-              Text(_error!, style: const TextStyle(color: AppColors.red)),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SelectableText(
+                      _error!,
+                      style: const TextStyle(color: AppColors.red, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => _showRawResponsePopup(AIVisionService.lastRawResponse ?? ''),
+                      icon: const Icon(Icons.info_outline, size: 16, color: AppColors.green),
+                      label: const Text(
+                        'Voir plus de détails (Réponse brute)',
+                        style: TextStyle(color: AppColors.green),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
             ],
             if (_ticket != null) ...[
