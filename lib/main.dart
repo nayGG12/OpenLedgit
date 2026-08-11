@@ -35,7 +35,7 @@ Future<void> main() async {
   print(".:.:.:.:.:.:.:.:.:.       .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
   print(":.:.:.:.:.:.:.:.:.    .    :.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
   print(":.:.:.:.:.:.:.:.:.    .:    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(".:.:.:.:.:.:.:.:.:.    .:.:.    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
+  print(":.:.:.:.:.:.:.:.:.    .:.:.    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
   print(".:.:.:.:.:.:.:.:.:.    .:.:.:.     .:.:.:.:.:.:.:.:.:.:.:.:.:");
   print(":.:.:.:.:.:.:.:.:.    .:.:.:.:    .:.:.:.:.:.:.:.:.:.:.:.:.");
   print(".:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.:.:.");
@@ -47,7 +47,7 @@ Future<void> main() async {
   print("                                                    :. ");
   print("                                                    ::  ");
   print("                                                     :   ");
-  print("                                                      .  "); // Correction du point-virgule ajouté ici
+  print("                                                      .  ");
 
   // 1. Initialisation de Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -92,12 +92,13 @@ class OpenLedgerApp extends StatelessWidget {
         ),
       ),
       builder: (context, child) => HeroControllerScope.none(child: child!),
-      home: const AuthGate(),
+      // On démarre TOUJOURS sur le SplashScreen pour forcer son affichage natif Flutter
+      home: const SplashScreen(),
     );
   }
 }
 
-/// Détermine la page de démarrage selon l'auth Firebase et la présence du nom local.
+/// Gère la redirection une fois que le SplashScreen a fini son animation
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -107,7 +108,7 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
+          return const Scaffold(backgroundColor: Colors.black, body: SizedBox.shrink());
         }
 
         final user = snapshot.data;
@@ -123,7 +124,7 @@ class AuthGate extends StatelessWidget {
           future: StorageService.getUserFullName(),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const SplashScreen();
+              return const Scaffold(backgroundColor: Colors.black, body: SizedBox.shrink());
             }
             final localName = snap.data;
             if (localName == null || localName.trim().isEmpty) {

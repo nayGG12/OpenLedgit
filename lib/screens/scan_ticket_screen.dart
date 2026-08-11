@@ -1,4 +1,4 @@
-// [source: 7, 28]
+// [source: 5]// [source: 7, 28]
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -30,9 +30,6 @@ class ScanTicketScreen extends StatefulWidget {
 
 class _ScanTicketScreenState extends State<ScanTicketScreen> {
   final ImagePicker _imagePicker = ImagePicker();
-  final TextRecognizer _textRecognizer = TextRecognizer(
-    script: TextRecognitionScript.latin,
-  );
 
   ScannedTicketData? _ticket;
   String? _error;
@@ -41,8 +38,8 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   String? _capturedImagePath;
   String? _geminiApiKey;
   
-  // Variable pour choisir entre l'IA Groq en ligne et l'IA locale
-  bool _useGemini = true; 
+  // Utilisation de l'énumération des trois méthodes
+  ScanMethod _selectedMethod = ScanMethod.aiGroq;
 
   @override
   void initState() {
@@ -55,9 +52,9 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     if (mounted) {
       setState(() {
         _geminiApiKey = key;
-        // Si aucune clé n'est enregistrée, on force le mode local par défaut
+        // Si aucune clé n'est enregistrée, bascule par défaut sur l'IA locale
         if (key == null || key.isEmpty) {
-          _useGemini = false;
+          _selectedMethod = ScanMethod.aiLocal;
         }
       });
     }
@@ -109,12 +106,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _textRecognizer.close();
-    super.dispose();
-  }
-
   Future<void> _captureAndProcessTicket() async {
     if (_isPickingImage) return;
     _isPickingImage = true;
@@ -152,61 +143,29 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       _capturedImagePath = pickedFile.path;
     });
 
-    // Si l'utilisateur a choisi l'IA Groq et qu'une clé est présente
-    if (_useGemini && _geminiApiKey != null && _geminiApiKey!.isNotEmpty) {
-      try {
-        final aiResult = await AIVisionService.analyze(
-          imagePath: pickedFile.path,
-          apiKey: _geminiApiKey!,
-        );
-        if (!mounted) return;
-        setState(() {
-          _ticket = aiResult;
-          _isProcessing = false;
-        });
-        return;
-      } on AIResponseFormatException catch (e) {
-        debugPrint('❌ [ScanTicketScreen] AIResponseFormatException : ${e.reason}');
-        debugPrint('📄 Réponse brute reçue :\n${e.rawResponse}');
-
-        if (!mounted) return;
-        setState(() {
-          _error = e.detailedMessage;
-          _isProcessing = false;
-        });
-        return;
-      } catch (e) {
-        debugPrint('IA en ligne indisponible, repli sur l\'analyse locale : $e');
-        setState(() {
-          _error = 'Erreur IA Groq : $e (Basculement en local)';
-        });
-      }
-    }
-
-    // Analyse locale (fallback ou choix explicite "IA locale")
     try {
-      final inputImage = InputImage.fromFilePath(pickedFile.path);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(
-        inputImage,
+      // Appel unifié via AIVisionService avec la méthode choisie
+      final result = await AIVisionService.analyzeWithMethod(
+        imagePath: pickedFile.path,
+        apiKey: _geminiApiKey ?? '',
+        method: _selectedMethod,
       );
-
-      final parsedData = _parseRecognizedText(recognizedText);
 
       if (!mounted) return;
       setState(() {
-        _ticket = parsedData;
+        _ticket = result;
         _isProcessing = false;
       });
     } catch (e) {
+      debugPrint('❌ [ScanTicketScreen] Erreur lors de l\'analyse ($_selectedMethod) : $e');
       if (!mounted) return;
       setState(() {
-        _error = 'Erreur lors de l\'analyse locale du ticket : $e';
+        _error = 'Erreur d\'analyse : $e';
         _isProcessing = false;
       });
     }
   }
 
-  // Pop-up pour afficher et copier la réponse brute complète de Groq (ainsi que l'erreur)
   void _showRawResponsePopup(String rawResponse) {
     showDialog(
       context: context,
@@ -233,12 +192,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                   const SizedBox(height: 16),
                 ],
                 const Text(
-                  'Réponse brute de Groq :',
+                  'Réponse brute / Texte extrait :',
                   style: TextStyle(color: AppColors.green, fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 SelectableText(
-                  rawResponse.isEmpty ? 'Aucune réponse brute disponible.' : rawResponse,
+                  rawResponse.isEmpty ? 'Aucune donnée brute disponible.' : rawResponse,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontFamily: 'monospace',
@@ -257,102 +216,6 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         ],
       ),
     );
-  }
-
-  static const Map<String, String> _brandCategories = {
-    'carrefour': 'Alimentation', 'leclerc': 'Alimentation', 'e.leclerc': 'Alimentation',
-    'auchan': 'Alimentation', 'intermarche': 'Alimentation', 'lidl': 'Alimentation',
-  };
-
-  static final RegExp _noiseLineRegex = RegExp(
-    r'siret|siren|rcs|tva\s*intra|n[°o]\s*tva|tel\s*[:.]|t[ée]l[ée]phone|caissier|caisse\s*n|ticket\s*n',
-    caseSensitive: false,
-  );
-
-  static const Map<String, String> _accentMap = {
-    'à': 'a', 'â': 'a', 'ä': 'a',
-    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
-    'î': 'i', 'ï': 'i',
-    'ô': 'o', 'ö': 'o',
-    'ù': 'u', 'û': 'u', 'ü': 'u',
-    'ç': 'c',
-    'œ': 'oe', 'æ': 'ae',
-  };
-
-  String _normalize(String text) {
-    final lower = text.toLowerCase();
-    final buffer = StringBuffer();
-    for (final rune in lower.runes) {
-      final char = String.fromCharCode(rune);
-      buffer.write(_accentMap[char] ?? char);
-    }
-    return buffer.toString().trim();
-  }
-
-  ({String? name, String? category}) _detectBrand(List<String> lines) {
-    for (final line in lines) {
-      final normalized = _normalize(line);
-      for (final entry in _brandCategories.entries) {
-        if (normalized.contains(entry.key.trim())) {
-          final matchedCategory = kCategories.contains(entry.value) ? entry.value : (kCategories.isNotEmpty ? kCategories.first : 'Autre');
-          return (name: _toDisplayName(entry.key.trim()), category: matchedCategory);
-        }
-      }
-    }
-    return (name: null, category: null);
-  }
-
-  String _toDisplayName(String key) {
-    return key.split(' ').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
-  }
-
-  String _fallbackTitle(List<String> lines) {
-    for (final line in lines.take(5)) {
-      final trimmed = line.trim();
-      if (trimmed.length > 2 && !RegExp(r'^\d+$').hasMatch(trimmed) && !_noiseLineRegex.hasMatch(trimmed)) {
-        return trimmed;
-      }
-    }
-    return 'Ticket magasin';
-  }
-
-  String _fallbackCategory(List<String> lines) => kCategories.isNotEmpty ? kCategories.first : 'Autre';
-
-  double? _extractTotalAmount(List<String> lines) {
-    for (final line in lines) {
-      final val = _extractNumber(line);
-      if (val != null && val > 0 && val < 10000) return val;
-    }
-    return null;
-  }
-
-  String? _detectLocation(List<String> lines) => null;
-
-  ScannedTicketData _parseRecognizedText(RecognizedText recognizedText) {
-    final List<String> lines = [];
-    for (TextBlock block in recognizedText.blocks) {
-      for (TextLine line in block.lines) {
-        lines.add(line.text);
-      }
-    }
-    final brand = _detectBrand(lines);
-    return ScannedTicketData(
-      title: brand.name ?? _fallbackTitle(lines),
-      amount: _extractTotalAmount(lines),
-      date: DateTime.now(),
-      category: brand.category ?? _fallbackCategory(lines),
-      location: _detectLocation(lines),
-      source: TicketSource.local,
-    );
-  }
-
-  double? _extractNumber(String text) {
-    final regExp = RegExp(r'(\d+[\.,]\d{2})');
-    final match = regExp.firstMatch(text.replaceAll(' ', ''));
-    if (match != null) {
-      return double.tryParse(match.group(1)!.replaceAll(',', '.'));
-    }
-    return null;
   }
 
   void _returnScannedData() {
@@ -412,7 +275,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- BOUTON DE SÉLECTION AI LOCAL / AI GROQ ---
+            // --- SÉLECTEUR DES 3 MÉTHODES (Groq / Local AI / OCR Pur) ---
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -421,39 +284,20 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _useGemini = false),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        decoration: BoxDecoration(
-                          color: !_useGemini ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'AI Locale',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // 1. AI Groq
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
                         if (!hasKey) {
                           _openApiKeyDialog();
                         } else {
-                          setState(() => _useGemini = true);
+                          setState(() => _selectedMethod = ScanMethod.aiGroq);
                         }
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: _useGemini ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
+                          color: _selectedMethod == ScanMethod.aiGroq ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -461,16 +305,49 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           children: [
                             const Text(
                               'AI Groq',
-                              style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
                             ),
                             if (!hasKey) ...[
-                              const SizedBox(width: 4),
-                              const Icon(Icons.lock, size: 14, color: AppColors.textSecondary),
+                              const SizedBox(width: 2),
+                              const Icon(Icons.lock, size: 12, color: AppColors.textSecondary),
                             ]
                           ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 2. AI Locale
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedMethod = ScanMethod.aiLocal),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _selectedMethod == ScanMethod.aiLocal ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'AI Locale',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 3. OCR Pur
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedMethod = ScanMethod.ocrOnly),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _selectedMethod == ScanMethod.ocrOnly ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'OCR Brut',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
                         ),
                       ),
                     ),
@@ -507,9 +384,11 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            _useGemini 
+                            _selectedMethod == ScanMethod.aiGroq
                               ? 'Mode IA Groq activé.\nPrends en photo ton ticket.'
-                              : 'Mode IA Locale activé (Hors-ligne).\nPrends en photo ton ticket.',
+                              : _selectedMethod == ScanMethod.aiLocal
+                                ? 'Mode IA Locale activé.\nPrends en photo ton ticket.'
+                                : 'Mode OCR Brut activé.\nExtraction directe du texte.',
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: AppColors.textSecondary),
                           ),
@@ -610,13 +489,13 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (ticket.source == TicketSource.ai ? AppColors.green : AppColors.textSecondary).withValues(alpha: 0.15),
+                  color: AppColors.green.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  ticket.source == TicketSource.ai ? 'IA en ligne' : 'Analyse locale',
-                  style: TextStyle(
-                    color: ticket.source == TicketSource.ai ? AppColors.green : AppColors.textSecondary,
+                  _selectedMethod == ScanMethod.aiGroq ? 'IA Groq' : _selectedMethod == ScanMethod.aiLocal ? 'IA Locale' : 'OCR Brut',
+                  style: const TextStyle(
+                    color: AppColors.green,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
