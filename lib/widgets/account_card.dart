@@ -30,7 +30,10 @@ class AccountCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 alignment: Alignment.center,
-                child: Text(account.type.emoji, style: const TextStyle(fontSize: 20)),
+                child: Text(
+                  account.type.emoji,
+                  style: const TextStyle(fontSize: 20),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -47,8 +50,13 @@ class AccountCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      account.type.label,
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      account.isManual
+                          ? 'Compte virtuel · ${account.type.label}'
+                          : account.type.label,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),

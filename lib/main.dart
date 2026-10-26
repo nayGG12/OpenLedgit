@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,58 +11,132 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'account/welcome.dart';
 import 'account/collect_name.dart';
+import 'account/pin_setup.dart';
 import 'screens/splash_screen.dart';
+import 'screens/app_lock_gate.dart';
 import 'screens/accounts_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/plaid_service.dart';
+import 'services/app_lock_service.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  print(".:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.   .:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    :.:.:.:.:.:.:.    :.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:    .:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.:.:.");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.:.:    .:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    .:.:.:.     .:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.    :.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    .:    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .    :.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.       .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.      .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.       .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .    :.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(":.:.:.:.:.:.:.:.:.    .:    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    .:.:.:.     .:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.:.:    .:.:.:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.:.:.");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:    .:.:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.");
-  print(":.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.   .:.:.:.:.:.:.:.:.:.");
-  print(".:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:");
-  print(":.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.");
-  print("                                                    :. ");
-  print("                                                    ::  ");
-  print("                                                     :   ");
-  print("                                                      .  ");
+  const String reset = "\u001B[0m";
+  const String vert = "\u001B[32m";
+  const String orange = "\u001B[38;5;208m";
+  const String neon = "\u001B[38;5;46m"; // Vert néon
 
-  // 1. Initialisation de Firebase
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.   .:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    :.:.:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:    .:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.:    .:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    .:.:.:.     .:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    .:    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.       .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.      .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.       .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    .:.:.    .:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.     .:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.:    .:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:    .:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.    .:.:.:.:.:.:.:.   .:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print(
+    "$neon.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:$reset",
+  );
+  print(
+    "$neon:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.:.$reset",
+  );
+  print("$neon                                                    :. $reset");
+  print("$neon                                                    ::  $reset");
+  print("$neon                                                     :   $reset");
+  print("$neon                                                      .  $reset");
 
-  // 2. Initialisation des données de formatage pour les locales
-  await initializeDateFormatting('fr_FR', null);
-  Intl.defaultLocale = 'fr_FR';
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print("$vert Firebase est bien initialisé.$reset");
+  } catch (e) {
+    print("$orange Firebase n'est pas initialisé : $e$reset");
+  }
 
-  // Initialisation des données locales
-  await StorageService.initDefaultDataIfNeeded();
+  try {
+    await initializeDateFormatting('fr_FR', null);
+    Intl.defaultLocale = 'fr_FR';
+    print("$vert Formatage des dates initialisé.$reset");
+  } catch (e) {
+    print("$orange Formatage des dates non initialisé : $e$reset");
+  }
 
-  // 3. Bloquer l'orientation en mode portrait uniquement sur toute l'application
+  try {
+    await StorageService.initDefaultDataIfNeeded();
+    print("$vert StorageService est bien initialisé.$reset");
+  } catch (e) {
+    print("$orange StorageService n'est pas initialisé : $e$reset");
+  }
+
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -68,8 +145,40 @@ Future<void> main() async {
   runApp(const OpenLedgerApp());
 }
 
-class OpenLedgerApp extends StatelessWidget {
+class OpenLedgerApp extends StatefulWidget {
   const OpenLedgerApp({super.key});
+
+  @override
+  State<OpenLedgerApp> createState() => _OpenLedgerAppState();
+}
+
+class _OpenLedgerAppState extends State<OpenLedgerApp> {
+  final _appLinks = AppLinks();
+  StreamSubscription<Uri>? _linkSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForOAuthRedirect();
+  }
+
+  /// Écoute les Universal Links/App Links entrants pour reprendre le flux
+  /// Plaid OAuth quand l'utilisateur revient de l'authentification de sa banque.
+  void _listenForOAuthRedirect() {
+    _linkSub = _appLinks.uriLinkStream.listen((uri) async {
+      if (uri.toString().startsWith(PlaidService.oauthRedirectUri)) {
+        await PlaidService.resumeFromOAuthRedirect(uri);
+        // TODO : notifier AddBankAccountScreen que la connexion a repris
+        // (StreamController partagé, Provider, ou callback global).
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _linkSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -92,13 +201,11 @@ class OpenLedgerApp extends StatelessWidget {
         ),
       ),
       builder: (context, child) => HeroControllerScope.none(child: child!),
-      // On démarre TOUJOURS sur le SplashScreen pour forcer son affichage natif Flutter
       home: const SplashScreen(),
     );
   }
 }
 
-/// Gère la redirection une fois que le SplashScreen a fini son animation
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -108,29 +215,55 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(backgroundColor: Colors.black, body: SizedBox.shrink());
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: SizedBox.shrink(),
+          );
         }
 
         final user = snapshot.data;
-
-        // Si pas connecté, on affiche Welcome
         if (user == null) return const WelcomeScreen();
-
-        // Si connecté mais email non vérifié, afficher l'écran de bienvenue
         if (!user.emailVerified) return const WelcomeScreen();
 
-        // Utilisateur connecté et email vérifié -> vérifier nom local
         return FutureBuilder<String?>(
           future: StorageService.getUserFullName(),
           builder: (context, snap) {
             if (snap.connectionState == ConnectionState.waiting) {
-              return const Scaffold(backgroundColor: Colors.black, body: SizedBox.shrink());
+              return const Scaffold(
+                backgroundColor: Colors.black,
+                body: SizedBox.shrink(),
+              );
             }
             final localName = snap.data;
             if (localName == null || localName.trim().isEmpty) {
               return const CollectNameScreen();
             }
-            return const RootNavigation();
+            return FutureBuilder<bool>(
+              future: AppLockService.isSetupCompleted(),
+              builder: (context, setupSnapshot) {
+                if (setupSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(
+                    backgroundColor: Colors.black,
+                    body: SizedBox.shrink(),
+                  );
+                }
+                if (setupSnapshot.hasError) {
+                  return const Scaffold(
+                    backgroundColor: Colors.black,
+                    body: Center(
+                      child: Text(
+                        'Impossible de vérifier la configuration de sécurité.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+                if (setupSnapshot.data != true) {
+                  return const PinSetupScreen();
+                }
+                return const AppLockGate(child: RootNavigation());
+              },
+            );
           },
         );
       },
@@ -138,7 +271,6 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-// Classe personnalisée pour désactiver l'animation de transition de page
 class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   const _NoAnimationPageTransitionsBuilder();
 
@@ -178,7 +310,7 @@ class _RootNavigationState extends State<RootNavigation> {
   Widget build(BuildContext context) {
     final screens = [
       HomeScreen(key: _homeKey),
-      const AccountsScreen(),
+      const AddBankAccountScreen(),
       const SettingsScreen(),
     ];
 

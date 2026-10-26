@@ -51,7 +51,8 @@
         <string>L'application a besoin de la caméra pour prendre une photo du reçu.</string>
         <key>NSPhotoLibraryUsageDescription</key>
         <string>L'application a besoin de l'accès à la photothèque pour importer une image de reçu.</string>
+        <key>NSFaceIDUsageDescription</key>
+        <string>Face ID permet de déverrouiller OpenLedger de manière sécurisée.</string>
     </dict>
 </plist>
-
 

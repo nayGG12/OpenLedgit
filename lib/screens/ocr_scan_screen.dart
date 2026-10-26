@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import '../services/ai_receipt_service.dart';
 import '../theme/app_theme.dart';
 
@@ -48,7 +49,7 @@ class _OcrScanScreenState extends State<OcrScanScreen> {
         child: Column(
           children: [
             // Bouton pour lancer la caméra et l'analyse IA
-            ElevatedButton.icon(
+            NativeLiquidGlassButton(button: ElevatedButton.icon(
               onPressed: _isLoading ? null : _startScan,
               icon: const Icon(Icons.camera_alt),
               label: const Text('Scanner avec l\'IA'),
@@ -57,7 +58,7 @@ class _OcrScanScreenState extends State<OcrScanScreen> {
                 foregroundColor: Colors.black,
                 minimumSize: const Size(double.infinity, 50),
               ),
-            ),
+            )),
             const SizedBox(height: 20),
 
             // Indicateur de chargement pendant que l'IA analyse l'image

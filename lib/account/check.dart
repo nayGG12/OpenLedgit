@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
-import '../main.dart'; // <-- RootNavigation (avec la bottom nav bar) au lieu de HomeScreen seul
+import '../main.dart';
+import '../services/storage_service.dart';
 import 'register.dart';
 
 class CheckEmailScreen extends StatefulWidget {
@@ -29,16 +31,23 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
         user = FirebaseAuth.instance.currentUser;
 
         if (user != null && user.emailVerified) {
+          final fullName =
+              PendingUserCache.fullName ?? user.displayName ?? 'Utilisateur';
+          await StorageService.saveUserFullName(fullName);
+
           // L'email est vérifié, on enregistre dans Firestore
-          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-            'uid': user.uid,
-            'fullName': PendingUserCache.fullName ?? user.displayName ?? 'Utilisateur',
-            'email': user.email,
-            'birthDate': PendingUserCache.birthDate != null 
-                ? Timestamp.fromDate(PendingUserCache.birthDate!) 
-                : null,
-            'createdAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({
+                'uid': user.uid,
+                'fullName': fullName,
+                'email': user.email,
+                'birthDate': PendingUserCache.birthDate != null
+                    ? Timestamp.fromDate(PendingUserCache.birthDate!)
+                    : null,
+                'createdAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
 
           // Nettoyage de la RAM
           PendingUserCache.clear();
@@ -48,14 +57,16 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
           // Redirection vers la navigation principale (avec la bottom nav bar)
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(builder: (_) => const RootNavigation()),
+            MaterialPageRoute(builder: (_) => const AuthGate()),
             (route) => false,
           );
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Email non vérifié. Avez-vous bien cliqué sur le lien reçu ?'),
+              content: Text(
+                'Email non vérifié. Avez-vous bien cliqué sur le lien reçu ?',
+              ),
               backgroundColor: Colors.orangeAccent,
             ),
           );
@@ -114,17 +125,21 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userEmail = FirebaseAuth.instance.currentUser?.email ?? 'votre adresse email';
+    final userEmail =
+        FirebaseAuth.instance.currentUser?.email ?? 'votre adresse email';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary),
+        leading: NativeLiquidGlassButton(button: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () => Navigator.pop(context),
-        ),
+        )),
       ),
       body: SafeArea(
         child: Padding(
@@ -160,7 +175,7 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
               const SizedBox(height: 40),
               SizedBox(
                 height: 56,
-                child: ElevatedButton(
+                child: NativeLiquidGlassButton(button: ElevatedButton(
                   onPressed: _isChecking ? null : _checkVerificationStatus,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.green,
@@ -180,18 +195,24 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
                         )
                       : const Text(
                           'J\'ai vérifié mon email',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                ),
+                )),
               ),
               const SizedBox(height: 16),
-              TextButton(
+              NativeLiquidGlassButton(button: TextButton(
                 onPressed: _isResending ? null : _resendVerificationEmail,
                 child: _isResending
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.green),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.green,
+                        ),
                       )
                     : const Text(
                         'Renvoyer l\'e-mail',
@@ -200,7 +221,7 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-              ),
+              )),
             ],
           ),
         ),

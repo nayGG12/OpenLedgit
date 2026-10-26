@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 import '../screens/add_transaction_screen.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_alert_dialog.dart';
 
 class TransactionDetailScreen extends StatefulWidget {
   final LedgerTransaction transaction;
@@ -124,7 +126,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
   Future<void> _confirmDelete() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Supprimer cette transaction ?',
@@ -135,17 +137,17 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text(
               'Supprimer',
               style: TextStyle(color: AppColors.red),
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -188,11 +190,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
         elevation: 0,
         title: const Text('Détail de la transaction'),
         actions: [
-          IconButton(
+          NativeLiquidGlassButton(button: IconButton(
             icon: const Icon(Icons.edit_outlined),
             onPressed: _editTransaction,
             tooltip: 'Modifier',
-          ),
+          )),
         ],
       ),
       body: SafeArea(
@@ -319,8 +321,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                           value: tx.location!,
                         ),
                       ),
-                    ],
-                  ),
+                  ],
+                ),
                 if (tx.receiptImagePath != null) ...[
                   const SizedBox(height: 20),
                   _StaggeredFadeIn(
@@ -348,11 +350,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                         const SizedBox(height: 12),
                         SizedBox(
                           height: 52,
-                          child: ElevatedButton.icon(
+                          child: NativeLiquidGlassButton(button: ElevatedButton.icon(
                             onPressed: _openReceipt,
                             icon: const Icon(Icons.open_in_full),
                             label: const Text('Ouvrir le reçu'),
-                          ),
+                          )),
                         ),
                       ],
                     ),
@@ -363,7 +365,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                   index: 4,
                   child: SizedBox(
                     height: 56,
-                    child: OutlinedButton.icon(
+                    child: NativeLiquidGlassButton(button: OutlinedButton.icon(
                       onPressed: _deleting ? null : _confirmDelete,
                       icon: _deleting
                           ? const SizedBox(
@@ -396,7 +398,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen>
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ),
               ],

@@ -1,6 +1,7 @@
 // [source: 5]// [source: 7, 28]
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +11,7 @@ import '../models/scanned_ticket_data.dart';
 import '../screens/add_transaction_screen.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_alert_dialog.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../services/ai_settings_service.dart';
 import '../services/ai_vision_service.dart';
@@ -37,7 +39,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   bool _isPickingImage = false;
   String? _capturedImagePath;
   String? _geminiApiKey;
-  
+
   // Utilisation de l'énumération des trois méthodes
   ScanMethod _selectedMethod = ScanMethod.aiGroq;
 
@@ -64,9 +66,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
     final controller = TextEditingController(text: _geminiApiKey ?? '');
     final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
-        title: const Text('IA visuelle en ligne (Groq)', style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          'IA visuelle en ligne (Groq)',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,11 +96,17 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Enregistrer', style: TextStyle(color: AppColors.green)),
-          ),
+            child: const Text(
+              'Enregistrer',
+              style: TextStyle(color: AppColors.green),
+            ),
+          )),
         ],
       ),
     );
@@ -157,7 +168,9 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
         _isProcessing = false;
       });
     } catch (e) {
-      debugPrint('❌ [ScanTicketScreen] Erreur lors de l\'analyse ($_selectedMethod) : $e');
+      debugPrint(
+        '❌ [ScanTicketScreen] Erreur lors de l\'analyse ($_selectedMethod) : $e',
+      );
       if (!mounted) return;
       setState(() {
         _error = 'Erreur d\'analyse : $e';
@@ -169,9 +182,12 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   void _showRawResponsePopup(String rawResponse) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassAlertDialog(
         backgroundColor: AppColors.card,
-        title: const Text('Détails et réponse brute', style: TextStyle(color: AppColors.textPrimary)),
+        title: const Text(
+          'Détails et réponse brute',
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
@@ -182,22 +198,35 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                 if (_error != null) ...[
                   const Text(
                     'Message d\'erreur :',
-                    style: TextStyle(color: AppColors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(
+                      color: AppColors.red,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   SelectableText(
                     _error!,
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 12,
+                    ),
                   ),
                   const SizedBox(height: 16),
                 ],
                 const Text(
                   'Réponse brute / Texte extrait :',
-                  style: TextStyle(color: AppColors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.green,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 SelectableText(
-                  rawResponse.isEmpty ? 'Aucune donnée brute disponible.' : rawResponse,
+                  rawResponse.isEmpty
+                      ? 'Aucune donnée brute disponible.'
+                      : rawResponse,
                   style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontFamily: 'monospace',
@@ -209,10 +238,13 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
           ),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer', style: TextStyle(color: AppColors.green)),
-          ),
+            child: const Text(
+              'Fermer',
+              style: TextStyle(color: AppColors.green),
+            ),
+          )),
         ],
       ),
     );
@@ -245,7 +277,9 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
   void _openManualEntry() {
     Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => AddTransactionScreen(accounts: widget.accounts)),
+      MaterialPageRoute(
+        builder: (_) => AddTransactionScreen(accounts: widget.accounts),
+      ),
     ).then((saved) {
       if (saved == true && mounted) Navigator.pop(context, true);
     });
@@ -259,14 +293,14 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
       appBar: AppBar(
         title: const Text('Scanner un ticket'),
         actions: [
-          IconButton(
+          NativeLiquidGlassButton(button: IconButton(
             tooltip: 'Configurer la clé API Groq',
             icon: Icon(
               Icons.key,
               color: hasKey ? AppColors.green : AppColors.textSecondary,
             ),
             onPressed: _openApiKeyDialog,
-          ),
+          )),
         ],
       ),
       backgroundColor: AppColors.background,
@@ -297,7 +331,9 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: _selectedMethod == ScanMethod.aiGroq ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
+                          color: _selectedMethod == ScanMethod.aiGroq
+                              ? AppColors.green.withValues(alpha: 0.2)
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
@@ -305,12 +341,20 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           children: [
                             const Text(
                               'AI Groq',
-                              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
                             ),
                             if (!hasKey) ...[
                               const SizedBox(width: 2),
-                              const Icon(Icons.lock, size: 12, color: AppColors.textSecondary),
-                            ]
+                              const Icon(
+                                Icons.lock,
+                                size: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -319,17 +363,24 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                   // 2. AI Locale
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => setState(() => _selectedMethod = ScanMethod.aiLocal),
+                      onTap: () =>
+                          setState(() => _selectedMethod = ScanMethod.aiLocal),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: _selectedMethod == ScanMethod.aiLocal ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
+                          color: _selectedMethod == ScanMethod.aiLocal
+                              ? AppColors.green.withValues(alpha: 0.2)
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
                           'AI Locale',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ),
@@ -337,17 +388,24 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                   // 3. OCR Pur
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => setState(() => _selectedMethod = ScanMethod.ocrOnly),
+                      onTap: () =>
+                          setState(() => _selectedMethod = ScanMethod.ocrOnly),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: _selectedMethod == ScanMethod.ocrOnly ? AppColors.green.withValues(alpha: 0.2) : Colors.transparent,
+                          color: _selectedMethod == ScanMethod.ocrOnly
+                              ? AppColors.green.withValues(alpha: 0.2)
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Text(
                           'OCR Brut',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12),
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ),
@@ -377,7 +435,7 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                           const Icon(
+                          const Icon(
                             Icons.document_scanner_outlined,
                             size: 64,
                             color: AppColors.green,
@@ -385,31 +443,33 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                           const SizedBox(height: 16),
                           Text(
                             _selectedMethod == ScanMethod.aiGroq
-                              ? 'Mode IA Groq activé.\nPrends en photo ton ticket.'
-                              : _selectedMethod == ScanMethod.aiLocal
+                                ? 'Mode IA Groq activé.\nPrends en photo ton ticket.'
+                                : _selectedMethod == ScanMethod.aiLocal
                                 ? 'Mode IA Locale activé.\nPrends en photo ton ticket.'
                                 : 'Mode OCR Brut activé.\nExtraction directe du texte.',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: AppColors.textSecondary),
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
                           ),
-                           const SizedBox(height: 24),
-                           ElevatedButton.icon(
-                             onPressed: _captureAndProcessTicket,
-                             icon: const Icon(Icons.camera_alt),
-                             label: const Text('Prendre en photo le ticket'),
-                           ),
-                           const SizedBox(height: 12),
-                           OutlinedButton.icon(
-                             onPressed: _pickFromGalleryAndProcessTicket,
-                             icon: const Icon(Icons.photo_library_outlined),
-                             label: const Text('Importer depuis la galerie'),
-                           ),
-                           const SizedBox(height: 12),
-                           TextButton.icon(
-                             onPressed: _openManualEntry,
-                             icon: const Icon(Icons.edit_outlined),
-                             label: const Text('Ajouter manuellement'),
-                           ),
+                          const SizedBox(height: 24),
+                          NativeLiquidGlassButton(button: ElevatedButton.icon(
+                            onPressed: _captureAndProcessTicket,
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text('Prendre en photo le ticket'),
+                          )),
+                          const SizedBox(height: 12),
+                          NativeLiquidGlassButton(button: OutlinedButton.icon(
+                            onPressed: _pickFromGalleryAndProcessTicket,
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Importer depuis la galerie'),
+                          )),
+                          const SizedBox(height: 12),
+                          NativeLiquidGlassButton(button: TextButton.icon(
+                            onPressed: _openManualEntry,
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Ajouter manuellement'),
+                          )),
                         ],
                       ),
                     ),
@@ -426,35 +486,48 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                   children: [
                     SelectableText(
                       _error!,
-                      style: const TextStyle(color: AppColors.red, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: AppColors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () => _showRawResponsePopup(AIVisionService.lastRawResponse ?? ''),
-                      icon: const Icon(Icons.info_outline, size: 16, color: AppColors.green),
+                    NativeLiquidGlassButton(button: TextButton.icon(
+                      onPressed: () => _showRawResponsePopup(
+                        AIVisionService.lastRawResponse ?? '',
+                      ),
+                      icon: const Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: AppColors.green,
+                      ),
                       label: const Text(
                         'Voir plus de détails (Réponse brute)',
                         style: TextStyle(color: AppColors.green),
                       ),
-                    ),
+                    )),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
             ],
             if (_ticket != null) ...[
-              ElevatedButton.icon(
+              NativeLiquidGlassButton(button: ElevatedButton.icon(
                 onPressed: _captureAndProcessTicket,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Refaire une photo'),
-              ),
+              )),
               const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: widget.returnScannedData ? _returnScannedData : _openPrefilledEntry,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.green),
+              NativeLiquidGlassButton(button: ElevatedButton.icon(
+                onPressed: widget.returnScannedData
+                    ? _returnScannedData
+                    : _openPrefilledEntry,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.green,
+                ),
                 icon: const Icon(Icons.check),
                 label: const Text('Utiliser ces informations'),
-              ),
+              )),
             ],
           ],
         ),
@@ -493,7 +566,11 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  _selectedMethod == ScanMethod.aiGroq ? 'IA Groq' : _selectedMethod == ScanMethod.aiLocal ? 'IA Locale' : 'OCR Brut',
+                  _selectedMethod == ScanMethod.aiGroq
+                      ? 'IA Groq'
+                      : _selectedMethod == ScanMethod.aiLocal
+                      ? 'IA Locale'
+                      : 'OCR Brut',
                   style: const TextStyle(
                     color: AppColors.green,
                     fontSize: 11,
@@ -507,11 +584,15 @@ class _ScanTicketScreenState extends State<ScanTicketScreen> {
           _buildPreviewRow('Nom / Titre', ticket.title),
           _buildPreviewRow(
             'Montant',
-            ticket.amount != null ? '${ticket.amount?.toStringAsFixed(2)} €' : 'Non détecté',
+            ticket.amount != null
+                ? '${ticket.amount?.toStringAsFixed(2)} €'
+                : 'Non détecté',
           ),
           _buildPreviewRow(
             'Date',
-            ticket.date != null ? '${ticket.date?.day.toString().padLeft(2, '0')}/${ticket.date?.month.toString().padLeft(2, '0')}/${ticket.date?.year}' : 'Non détectée',
+            ticket.date != null
+                ? '${ticket.date?.day.toString().padLeft(2, '0')}/${ticket.date?.month.toString().padLeft(2, '0')}/${ticket.date?.year}'
+                : 'Non détectée',
           ),
           _buildPreviewRow('Catégorie', ticket.category ?? 'Autre'),
         ],

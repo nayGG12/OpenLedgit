@@ -45,7 +45,7 @@ class DefaultFirebaseOptions {
     appId: '1:507471318000:web:8b1678588eee1e53e96b35',
     messagingSenderId: '507471318000',
     projectId: 'openledger-1',
-    authDomain: 'openledger-1.firebaseapp.com',
+    authDomain: 'openledger-1.firebaseapp.com', // ou le domaine que tu as lié à ton projet
     storageBucket: 'openledger-1.firebasestorage.app',
     measurementId: 'G-EBVBQ6X903',
   );

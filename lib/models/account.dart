@@ -29,31 +29,35 @@ class Account {
   String name;
   AccountType type;
   double balance;
+  bool isManual;
 
   Account({
     required this.id,
     required this.name,
     required this.type,
     required this.balance,
+    this.isManual = false,
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'type': type.name,
-        'balance': balance,
-      };
+    'id': id,
+    'name': name,
+    'type': type.name,
+    'balance': balance,
+    'isManual': isManual,
+  };
 
-// Exemple de correction dans Account.fromJson
-factory Account.fromJson(Map<String, dynamic> json) {
+  // Exemple de correction dans Account.fromJson
+  factory Account.fromJson(Map<String, dynamic> json) {
     return Account(
       id: json['id'] as String? ?? '', // Plus d'appel à StorageService ici
       name: json['name'] as String? ?? '',
       type: AccountType.values.firstWhere(
-        (e) => e.name == json['type'], 
+        (e) => e.name == json['type'],
         orElse: () => AccountType.banque,
       ),
-      balance: (json['balance'] as num?)?.toDouble() ?? 0.0, 
+      balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
+      isManual: json['isManual'] as bool? ?? false,
     );
   }
 }

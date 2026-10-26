@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
-import '../main.dart';
 import '../services/storage_service.dart';
+import 'pin_setup.dart';
 
 class CollectNameScreen extends StatefulWidget {
   const CollectNameScreen({super.key});
@@ -36,7 +37,7 @@ class _CollectNameScreenState extends State<CollectNameScreen> {
       // Navigue immédiatement vers l'app principale
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const RootNavigation()),
+        MaterialPageRoute(builder: (_) => const PinSetupScreen()),
         (route) => false,
       );
 
@@ -133,7 +134,7 @@ class _CollectNameScreenState extends State<CollectNameScreen> {
                 const SizedBox(height: 24),
                 SizedBox(
                   height: 56,
-                  child: ElevatedButton(
+                  child: NativeLiquidGlassButton(button: ElevatedButton(
                     onPressed: _isSaving ? null : _save,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.green,
@@ -158,7 +159,7 @@ class _CollectNameScreenState extends State<CollectNameScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                  ),
+                  )),
                 ),
               ],
             ),

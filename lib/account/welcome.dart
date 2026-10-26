@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import '../theme/app_theme.dart';
 import 'register.dart';
 import 'login.dart'; // Importation de l'écran de connexion
@@ -220,7 +221,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                           SizedBox(
                             width: double.infinity,
                             height: 56,
-                            child: ElevatedButton(
+                            child: NativeLiquidGlassButton(button: ElevatedButton(
                               onPressed: _goToLogin,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.green,
@@ -237,13 +238,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
+                            )),
                           ),
                           const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
                             height: 56,
-                            child: OutlinedButton(
+                            child: NativeLiquidGlassButton(button: OutlinedButton(
                               onPressed: _goToRegister,
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppColors.textPrimary,
@@ -262,7 +263,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ),
+                            )),
                           ),
                           const SizedBox(height: 24),
                         ],

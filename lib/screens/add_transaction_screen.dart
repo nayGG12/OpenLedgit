@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -373,10 +374,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
+                NativeLiquidGlassButton(button: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Retour'),
-                ),
+                )),
               ],
             ),
           ),
@@ -393,11 +394,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         ),
         actions: [
           if (widget.accounts.isNotEmpty)
-            IconButton(
+            NativeLiquidGlassButton(button: IconButton(
               onPressed: _openScanTicketForPrefill,
               icon: const Icon(Icons.document_scanner_outlined),
               tooltip: 'Scanner un ticket',
-            ),
+            )),
         ],
       ),
       body: Form(
@@ -555,7 +556,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             ),
             const SizedBox(height: 24),
 
-            ElevatedButton(
+            NativeLiquidGlassButton(button: ElevatedButton(
               onPressed: _save,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.green,
@@ -567,7 +568,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     ? 'Enregistrer'
                     : 'Modifier',
               ),
-            ),
+            )),
           ],
         ),
       ),
@@ -643,29 +644,29 @@ class _ReceiptSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: NativeLiquidGlassButton(button: OutlinedButton.icon(
                   onPressed: onClear,
                   icon: const Icon(Icons.delete_outline, size: 18),
                   label: const Text('Supprimer'),
-                ),
+                )),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: ElevatedButton.icon(
+                child: NativeLiquidGlassButton(button: ElevatedButton.icon(
                   onPressed: onShowPicker,
                   icon: const Icon(Icons.photo_camera, size: 18),
                   label: const Text('Changer'),
-                ),
+                )),
               ),
             ],
           ),
         ],
       );
     }
-    return OutlinedButton.icon(
+    return NativeLiquidGlassButton(button: OutlinedButton.icon(
       onPressed: onShowPicker,
       icon: const Icon(Icons.photo_camera_back_outlined, size: 20),
       label: const Text('Ajouter un reçu'),
-    );
+    ));
   }
 }

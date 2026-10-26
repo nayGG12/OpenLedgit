@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,6 +9,7 @@ import '../models/account.dart';
 import '../models/transaction.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/glass_alert_dialog.dart';
 import '../widgets/account_card.dart';
 import '../widgets/transaction_tile.dart';
 import 'add_transaction_screen.dart' show AddTransactionScreen;
@@ -158,7 +160,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _openAdvancedFiltersDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Filtres avancés',
@@ -191,9 +193,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       )
                       .toList(),
-                  onChanged: (value) => setState(
-                    () => _selectedCategoryFilter = value ?? 'Tous',
-                  ),
+                  onChanged: (value) =>
+                      setState(() => _selectedCategoryFilter = value ?? 'Tous'),
                 ),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
@@ -209,10 +210,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   items: [
-                    const DropdownMenuItem(
-                      value: 'Tous',
-                      child: Text('Tous'),
-                    ),
+                    const DropdownMenuItem(value: 'Tous', child: Text('Tous')),
                     ..._accounts
                         .map(
                           (account) => DropdownMenuItem(
@@ -222,9 +220,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         )
                         .toList(),
                   ],
-                  onChanged: (value) => setState(
-                    () => _selectedAccountFilter = value ?? 'Tous',
-                  ),
+                  onChanged: (value) =>
+                      setState(() => _selectedAccountFilter = value ?? 'Tous'),
                 ),
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
@@ -244,14 +241,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     DropdownMenuItem(value: 'Revenu', child: Text('Revenu')),
                     DropdownMenuItem(value: 'Dépense', child: Text('Dépense')),
                   ],
-                  onChanged: (value) => setState(
-                    () => _selectedTypeFilter = value ?? 'Tous',
-                  ),
+                  onChanged: (value) =>
+                      setState(() => _selectedTypeFilter = value ?? 'Tous'),
                 ),
                 const SizedBox(height: 14),
                 TextField(
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Montant min (€)',
@@ -267,8 +264,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 14),
                 TextField(
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Montant max (€)',
@@ -287,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => setState(() {
               _selectedCategoryFilter = 'Tous';
               _selectedAccountFilter = 'Tous';
@@ -296,11 +294,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _maxAmountFilter = '';
             }),
             child: const Text('Réinitialiser'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Appliquer'),
-          ),
+          )),
         ],
       ),
     );
@@ -561,7 +559,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         _StaggeredFadeIn(
                           index: 5 + _accounts.length,
                           child: TextField(
-                            style: const TextStyle(color: AppColors.textPrimary),
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                            ),
                             decoration: InputDecoration(
                               filled: true,
                               fillColor: AppColors.card,
@@ -589,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: Row(
                             children: [
                               Expanded(
-                                child: TextButton.icon(
+                                child: NativeLiquidGlassButton(button: TextButton.icon(
                                   onPressed: _openAdvancedFiltersDialog,
                                   icon: Icon(
                                     Icons.tune_outlined,
@@ -607,10 +607,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           : AppColors.textSecondary,
                                     ),
                                   ),
-                                ),
+                                )),
                               ),
                               if (_hasActiveFilters)
-                                TextButton(
+                                NativeLiquidGlassButton(button: TextButton(
                                   onPressed: () => setState(() {
                                     _selectedCategoryFilter = 'Tous';
                                     _selectedAccountFilter = 'Tous';
@@ -619,7 +619,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     _maxAmountFilter = '';
                                   }),
                                   child: const Text('Réinitialiser'),
-                                ),
+                                )),
                             ],
                           ),
                         ),
@@ -668,7 +668,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       final i = entry.key;
                                       final t = entry.value;
                                       final accountName =
-                                          accountNames[t.accountId] ?? 'Inconnu';
+                                          accountNames[t.accountId] ??
+                                          'Inconnu';
                                       return _StaggeredFadeIn(
                                         index: 7 + _accounts.length + i,
                                         child: Material(
@@ -725,7 +726,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           filled: true,
                                           labelText: 'Compte graphique',
                                           border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(14),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
                                             borderSide: BorderSide.none,
                                           ),
                                         ),

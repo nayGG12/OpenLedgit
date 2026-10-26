@@ -48,6 +48,22 @@ class _SplashScreenState extends State<SplashScreen>
       body: Stack(
         children: [
           _SplashBackground(animation: _backgroundController),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 32 + MediaQuery.of(context).padding.bottom,
+            child: const Center(
+              child: Text(
+                'BY KLOOZ',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 3.0,
+                ),
+              ),
+            ),
+          ),
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

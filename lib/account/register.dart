@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -277,10 +278,10 @@ class _RegisterScreenState extends State<RegisterScreen>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
+        leading: NativeLiquidGlassButton(button: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
-        ),
+        )),
       ),
       body: SafeArea(
         child: FadeTransition(
@@ -448,7 +449,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                                   SizedBox(
                                     width: double.infinity,
                                     height: 56,
-                                    child: ElevatedButton(
+                                    child: NativeLiquidGlassButton(button: ElevatedButton(
                                       onPressed: _isLoading ? null : _submit,
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: AppColors.green,
@@ -474,11 +475,11 @@ class _RegisterScreenState extends State<RegisterScreen>
                                                 fontWeight: FontWeight.bold,
                                               ),
                                             ),
-                                    ),
+                                    )),
                                   ),
                                   const SizedBox(height: 20),
                                   Center(
-                                    child: TextButton(
+                                    child: NativeLiquidGlassButton(button: TextButton(
                                       onPressed: () {
                                         Navigator.pushReplacement(
                                           context,
@@ -493,7 +494,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                    ),
+                                    )),
                                   ),
                                 ],
                               ),

@@ -2,11 +2,15 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../widgets/native_liquid_glass_button.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../services/app_lock_service.dart';
 import '../services/export_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
+import '../account/pin_setup.dart';
+import '../widgets/glass_alert_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -44,7 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _confirmWipe() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Tout effacer ?',
@@ -56,17 +60,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text(
               'Tout effacer',
               style: TextStyle(color: AppColors.red),
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -81,7 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _confirmLogout() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Se déconnecter ?',
@@ -92,17 +96,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text(
               'Se déconnecter',
               style: TextStyle(color: AppColors.red),
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -134,7 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Données hors ligne',
@@ -154,10 +158,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Fermer'),
-          ),
+          )),
         ],
       ),
     );
@@ -170,7 +174,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Modifier le nom',
@@ -192,11 +196,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () {
               if (formKey.currentState?.validate() == true) {
                 Navigator.pop(ctx, true);
@@ -206,7 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Enregistrer',
               style: TextStyle(color: AppColors.green),
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -229,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final proceed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Changer le mot de passe',
@@ -253,11 +257,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () {
               if (formKey.currentState?.validate() == true) {
                 Navigator.pop(ctx, true);
@@ -267,7 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Modifier',
               style: TextStyle(color: AppColors.green),
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -282,10 +286,184 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }, successMessage: 'Mot de passe modifié.');
   }
 
+  Future<void> _changePin() async {
+    String? currentPin;
+    try {
+      currentPin = await AppLockService.getPin();
+    } on Exception {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible de lire le code PIN enregistré.'),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (currentPin == null) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PinSetupScreen()),
+      );
+      return;
+    }
+
+    final storedPin = currentPin;
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmationController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var pinLength = storedPin.length;
+    String? errorMessage;
+
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          backgroundColor: AppColors.card,
+          title: const Text(
+            'Changer le code PIN',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _pinFormField(
+                    controller: currentController,
+                    label: 'Code PIN actuel',
+                    length: storedPin.length,
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 4, label: Text('4 chiffres')),
+                        ButtonSegment(value: 6, label: Text('6 chiffres')),
+                      ],
+                      selected: {pinLength},
+                      onSelectionChanged: (selection) {
+                        setDialogState(() {
+                          pinLength = selection.first;
+                          newController.clear();
+                          confirmationController.clear();
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _pinFormField(
+                    controller: newController,
+                    label: 'Nouveau code PIN',
+                    length: pinLength,
+                  ),
+                  const SizedBox(height: 16),
+                  _pinFormField(
+                    controller: confirmationController,
+                    label: 'Confirmer le nouveau code',
+                    length: pinLength,
+                    validator: (value) {
+                      if (value != newController.text) {
+                        return 'Les codes PIN ne correspondent pas.';
+                      }
+                      return null;
+                    },
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(color: AppColors.red),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            NativeLiquidGlassButton(button: TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Annuler'),
+            )),
+            NativeLiquidGlassButton(button: TextButton(
+              onPressed: () async {
+                if (formKey.currentState?.validate() != true) return;
+                try {
+                  final didChange = await AppLockService.changePin(
+                    currentPin: currentController.text,
+                    newPin: newController.text,
+                  );
+                  if (!dialogContext.mounted) return;
+                  if (!didChange) {
+                    setDialogState(
+                      () => errorMessage = 'Le code PIN actuel est incorrect.',
+                    );
+                    return;
+                  }
+                  Navigator.pop(dialogContext, true);
+                } on Exception {
+                  if (dialogContext.mounted) {
+                    setDialogState(
+                      () => errorMessage =
+                          'Impossible d’enregistrer le nouveau code PIN.',
+                    );
+                  }
+                }
+              },
+              child: const Text(
+                'Enregistrer',
+                style: TextStyle(color: AppColors.green),
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
+
+    currentController.dispose();
+    newController.dispose();
+    confirmationController.dispose();
+
+    if (changed == true && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Code PIN modifié.')));
+    }
+  }
+
+  Widget _pinFormField({
+    required TextEditingController controller,
+    required String label,
+    required int length,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: true,
+      keyboardType: TextInputType.number,
+      maxLength: length,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      style: const TextStyle(color: AppColors.textPrimary),
+      decoration: InputDecoration(labelText: label, counterText: ''),
+      validator:
+          validator ??
+          (value) {
+            if (value == null || value.length != length) {
+              return 'Entrez $length chiffres.';
+            }
+            return null;
+          },
+    );
+  }
+
   Future<void> _confirmDeleteAccount() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => GlassAlertDialog(
         backgroundColor: AppColors.card,
         title: const Text(
           'Supprimer le compte ?',
@@ -296,17 +474,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Annuler'),
-          ),
-          TextButton(
+          )),
+          NativeLiquidGlassButton(button: TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text(
               'Supprimer',
               style: TextStyle(color: AppColors.red),
             ),
-          ),
+          )),
         ],
       ),
     );
@@ -407,10 +585,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 20),
                 _StaggeredFadeIn(
                   index: 4,
-                  child: const _SectionTitle('Compte'),
+                  child: const _SectionTitle('Sécurité'),
                 ),
                 _StaggeredFadeIn(
                   index: 5,
+                  child: _SettingsCard(
+                    children: [
+                      _SettingsTile(
+                        icon: Icons.password_outlined,
+                        title: 'Configurer ou changer le code PIN',
+                        subtitle:
+                            'Protège l’accès à l’application avec un code PIN',
+                        onTap: _changePin,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _StaggeredFadeIn(
+                  index: 6,
+                  child: const _SectionTitle('Compte'),
+                ),
+                _StaggeredFadeIn(
+                  index: 7,
                   child: _SettingsCard(
                     children: [
                       _SettingsTile(
@@ -448,11 +645,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 20),
                 _StaggeredFadeIn(
-                  index: 6,
+                  index: 8,
                   child: const _SectionTitle('À propos'),
                 ),
                 _StaggeredFadeIn(
-                  index: 7,
+                  index: 9,
                   child: _SettingsCard(
                     children: [
                       const _SettingsTile(
