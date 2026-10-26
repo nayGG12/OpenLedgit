@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../widgets/native_liquid_glass_button.dart';
 import 'package:intl/intl.dart';
@@ -23,7 +22,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
   List<Account> _accounts = [];
   List<LedgerTransaction> _transactions = [];
   bool _loading = true;
@@ -36,31 +35,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String _minAmountFilter = '';
   String _maxAmountFilter = '';
 
-  // Pulsation douce du bouton "+"
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseAnimation;
   bool _isFabExpanded = false;
 
   @override
   void initState() {
     super.initState();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.06).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOutSine),
-    );
-
     _load();
     _loadUserName();
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadUserName() async {
@@ -285,20 +266,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
-          NativeLiquidGlassButton(button: TextButton(
-            onPressed: () => setState(() {
-              _selectedCategoryFilter = 'Tous';
-              _selectedAccountFilter = 'Tous';
-              _selectedTypeFilter = 'Tous';
-              _minAmountFilter = '';
-              _maxAmountFilter = '';
-            }),
-            child: const Text('Réinitialiser'),
-          )),
-          NativeLiquidGlassButton(button: TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Appliquer'),
-          )),
+          NativeLiquidGlassButton(
+            button: TextButton(
+              onPressed: () => setState(() {
+                _selectedCategoryFilter = 'Tous';
+                _selectedAccountFilter = 'Tous';
+                _selectedTypeFilter = 'Tous';
+                _minAmountFilter = '';
+                _maxAmountFilter = '';
+              }),
+              child: const Text('Réinitialiser'),
+            ),
+          ),
+          NativeLiquidGlassButton(
+            button: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Appliquer'),
+            ),
+          ),
         ],
       ),
     );
@@ -375,69 +360,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('OPENLEDGER')),
-      floatingActionButton: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 800),
-        curve: Curves.elasticOut,
-        builder: (context, entrance, child) =>
-            Transform.scale(scale: entrance, child: child),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_isFabExpanded) ...[
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutBack,
-                builder: (context, value, child) =>
-                    Transform.scale(scale: value, child: child),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: FloatingActionButton.extended(
-                    onPressed: _openAddTransaction,
-                    icon: const Icon(Icons.edit_outlined, size: 20),
-                    label: const Text('Saisie manuelle'),
-                    backgroundColor: AppColors.green,
-                    foregroundColor: Colors.black,
-                  ),
-                ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isFabExpanded) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FloatingActionButton.extended(
+                onPressed: _openAddTransaction,
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                label: const Text('Saisie manuelle'),
+                backgroundColor: AppColors.green,
+                foregroundColor: Colors.black,
               ),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutBack,
-                builder: (context, value, child) =>
-                    Transform.scale(scale: value, child: child),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: FloatingActionButton.extended(
-                    onPressed: _openScanTicket,
-                    icon: const Icon(Icons.document_scanner_outlined, size: 20),
-                    label: const Text('Scanner un ticket'),
-                    backgroundColor: AppColors.card,
-                    foregroundColor: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: FloatingActionButton(
-                onPressed: () => setState(() {
-                  _isFabExpanded = !_isFabExpanded;
-                }),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Icon(_isFabExpanded ? Icons.close : Icons.add),
-                ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FloatingActionButton.extended(
+                onPressed: _openScanTicket,
+                icon: const Icon(Icons.document_scanner_outlined, size: 20),
+                label: const Text('Scanner un ticket'),
+                backgroundColor: AppColors.card,
+                foregroundColor: AppColors.textPrimary,
               ),
             ),
           ],
-        ),
+          FloatingActionButton(
+            onPressed: () => setState(() {
+              _isFabExpanded = !_isFabExpanded;
+            }),
+            child: Icon(_isFabExpanded ? Icons.close : Icons.add),
+          ),
+        ],
       ),
       body: Stack(
         children: [
-          const Positioned.fill(child: _AnimatedBackdrop()),
+          const Positioned.fill(child: _HomeBackdrop()),
           _loading
               ? const Center(
                   child: CircularProgressIndicator(color: AppColors.green),
@@ -449,8 +407,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                     children: [
-                      _StaggeredFadeIn(
-                        index: 0,
+                      _HomeContent(
                         child: Text(
                           'Bienvenue, $_userName 👋',
                           style: const TextStyle(
@@ -462,8 +419,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                       const SizedBox(height: 16),
                       if (_accounts.isEmpty)
-                        _StaggeredFadeIn(
-                          index: 1,
+                        _HomeContent(
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -490,8 +446,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         )
                       else ...[
-                        _StaggeredFadeIn(
-                          index: 1,
+                        _HomeContent(
                           child: const Text(
                             'Patrimoine total',
                             style: TextStyle(
@@ -501,27 +456,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        _StaggeredFadeIn(
-                          index: 2,
-                          child: TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0, end: _total),
-                            duration: const Duration(milliseconds: 900),
-                            curve: Curves.easeOutCubic,
-                            builder: (context, value, child) => Text(
-                              formatter.format(value),
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 34,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        _HomeContent(
+                          child: Text(
+                            formatter.format(_total),
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 34,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                       ],
                       if (_accounts.isNotEmpty) ...[
                         const SizedBox(height: 14),
-                        _StaggeredFadeIn(
-                          index: 3,
+                        _HomeContent(
                           child: Container(
                             decoration: BoxDecoration(
                               color: AppColors.card,
@@ -556,8 +504,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _StaggeredFadeIn(
-                          index: 5 + _accounts.length,
+                        _HomeContent(
                           child: TextField(
                             style: const TextStyle(
                               color: AppColors.textPrimary,
@@ -584,48 +531,50 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        _StaggeredFadeIn(
-                          index: 6 + _accounts.length,
+                        _HomeContent(
                           child: Row(
                             children: [
                               Expanded(
-                                child: NativeLiquidGlassButton(button: TextButton.icon(
-                                  onPressed: _openAdvancedFiltersDialog,
-                                  icon: Icon(
-                                    Icons.tune_outlined,
-                                    color: _hasActiveFilters
-                                        ? AppColors.green
-                                        : AppColors.textSecondary,
-                                  ),
-                                  label: Text(
-                                    _hasActiveFilters
-                                        ? 'Filtres actifs'
-                                        : 'Filtres avancés',
-                                    style: TextStyle(
+                                child: NativeLiquidGlassButton(
+                                  button: TextButton.icon(
+                                    onPressed: _openAdvancedFiltersDialog,
+                                    icon: Icon(
+                                      Icons.tune_outlined,
                                       color: _hasActiveFilters
                                           ? AppColors.green
                                           : AppColors.textSecondary,
                                     ),
+                                    label: Text(
+                                      _hasActiveFilters
+                                          ? 'Filtres actifs'
+                                          : 'Filtres avancés',
+                                      style: TextStyle(
+                                        color: _hasActiveFilters
+                                            ? AppColors.green
+                                            : AppColors.textSecondary,
+                                      ),
+                                    ),
                                   ),
-                                )),
+                                ),
                               ),
                               if (_hasActiveFilters)
-                                NativeLiquidGlassButton(button: TextButton(
-                                  onPressed: () => setState(() {
-                                    _selectedCategoryFilter = 'Tous';
-                                    _selectedAccountFilter = 'Tous';
-                                    _selectedTypeFilter = 'Tous';
-                                    _minAmountFilter = '';
-                                    _maxAmountFilter = '';
-                                  }),
-                                  child: const Text('Réinitialiser'),
-                                )),
+                                NativeLiquidGlassButton(
+                                  button: TextButton(
+                                    onPressed: () => setState(() {
+                                      _selectedCategoryFilter = 'Tous';
+                                      _selectedAccountFilter = 'Tous';
+                                      _selectedTypeFilter = 'Tous';
+                                      _minAmountFilter = '';
+                                      _maxAmountFilter = '';
+                                    }),
+                                    child: const Text('Réinitialiser'),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 16),
-                        _StaggeredFadeIn(
-                          index: 6 + _accounts.length,
+                        _HomeContent(
                           child: const Text(
                             'Dernières transactions',
                             style: TextStyle(
@@ -662,16 +611,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 children: filteredTransactions
                                     .take(10)
                                     .toList()
-                                    .asMap()
-                                    .entries
-                                    .map((entry) {
-                                      final i = entry.key;
-                                      final t = entry.value;
+                                    .map((t) {
                                       final accountName =
                                           accountNames[t.accountId] ??
                                           'Inconnu';
-                                      return _StaggeredFadeIn(
-                                        index: 7 + _accounts.length + i,
+                                      return _HomeContent(
                                         child: Material(
                                           color: Colors.transparent,
                                           child: InkWell(
@@ -695,8 +639,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                           ),
                         const SizedBox(height: 20),
-                        _StaggeredFadeIn(
-                          index: 5 + _accounts.length,
+                        _HomeContent(
                           child: Container(
                             decoration: BoxDecoration(
                               color: AppColors.card,
@@ -771,94 +714,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 }
 
-class _StaggeredFadeIn extends StatefulWidget {
-  final int index;
+class _HomeContent extends StatelessWidget {
   final Widget child;
-  const _StaggeredFadeIn({required this.index, required this.child});
-
-  @override
-  State<_StaggeredFadeIn> createState() => _StaggeredFadeInState();
-}
-
-class _StaggeredFadeInState extends State<_StaggeredFadeIn>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fade;
-  late final Animation<double> _slideY;
-  late final Animation<double> _scale;
-  late final Animation<double> _rotation;
-  late final Animation<double> _blur;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 750),
-    );
-    _fade = CurvedAnimation(
-      parent: _controller,
-      curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
-    );
-    _slideY = Tween<double>(
-      begin: 46,
-      end: 0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _scale = Tween<double>(
-      begin: 0.72,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
-    _rotation = Tween<double>(
-      begin: -0.05,
-      end: 0.0,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _blur = Tween<double>(begin: 8.0, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
-      ),
-    );
-
-    final delay = Duration(milliseconds: 90 * widget.index.clamp(0, 24));
-    Future.delayed(delay, () {
-      if (mounted) _controller.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  const _HomeContent({required this.child});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        Widget content = child!;
-        if (_blur.value > 0.05) {
-          content = ImageFiltered(
-            imageFilter: ui.ImageFilter.blur(
-              sigmaX: _blur.value,
-              sigmaY: _blur.value,
-            ),
-            child: content,
-          );
-        }
-        return Opacity(
-          opacity: _fade.value.clamp(0.0, 1.0),
-          child: Transform.translate(
-            offset: Offset(0, _slideY.value),
-            child: Transform.rotate(
-              angle: _rotation.value,
-              child: Transform.scale(scale: _scale.value, child: content),
-            ),
-          ),
-        );
-      },
-      child: widget.child,
-    );
+    return child;
   }
 }
 
@@ -1122,224 +984,19 @@ class _LineChartPainter extends CustomPainter {
   }
 }
 
-class _BlobSpec {
-  final double size;
-  final int seed;
-  final Color color;
-  final int durationMs;
-  final double ampX;
-  final double ampY;
-  final double freqY;
-  final double? top;
-  final double? bottom;
-  final double? left;
-  final double? right;
-
-  const _BlobSpec({
-    required this.size,
-    required this.seed,
-    required this.color,
-    required this.durationMs,
-    required this.ampX,
-    required this.ampY,
-    required this.freqY,
-    this.top,
-    this.bottom,
-    this.left,
-    this.right,
-  });
-}
-
-class _AnimatedBackdrop extends StatefulWidget {
-  const _AnimatedBackdrop();
-
-  @override
-  State<_AnimatedBackdrop> createState() => _AnimatedBackdropState();
-}
-
-class _AnimatedBackdropState extends State<_AnimatedBackdrop>
-    with TickerProviderStateMixin {
-  late final List<AnimationController> _controllers;
-
-  static final List<_BlobSpec> _specs = [
-    _BlobSpec(
-      size: 200,
-      seed: 1,
-      color: AppColors.green.withOpacity(0.16),
-      durationMs: 5200,
-      ampX: 70,
-      ampY: 50,
-      freqY: 1.6,
-      top: -50,
-      left: -60,
-    ),
-    _BlobSpec(
-      size: 150,
-      seed: 2,
-      color: AppColors.green.withOpacity(0.12),
-      durationMs: 6400,
-      ampX: 55,
-      ampY: 65,
-      freqY: 0.8,
-      top: 100,
-      right: -40,
-    ),
-    _BlobSpec(
-      size: 230,
-      seed: 3,
-      color: AppColors.green.withOpacity(0.10),
-      durationMs: 7600,
-      ampX: 60,
-      ampY: 45,
-      freqY: 1.3,
-      bottom: -70,
-      left: 0,
-    ),
-    _BlobSpec(
-      size: 130,
-      seed: 4,
-      color: AppColors.green.withOpacity(0.14),
-      durationMs: 4600,
-      ampX: 45,
-      ampY: 55,
-      freqY: 1.9,
-      bottom: 60,
-      right: -20,
-    ),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _controllers = _specs
-        .map(
-          (s) => AnimationController(
-            vsync: this,
-            duration: Duration(milliseconds: s.durationMs),
-          )..repeat(),
-        )
-        .toList();
-  }
-
-  @override
-  void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    super.dispose();
-  }
+class _HomeBackdrop extends StatelessWidget {
+  const _HomeBackdrop();
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        children: List.generate(_specs.length, (i) {
-          final spec = _specs[i];
-          return AnimatedBuilder(
-            animation: _controllers[i],
-            builder: (context, _) {
-              final t = _controllers[i].value * 2 * math.pi;
-              final dx = spec.ampX * math.sin(t + spec.seed);
-              final dy = spec.ampY * math.sin(t * spec.freqY);
-              final rotation = t * 0.2;
-              return Positioned(
-                top: spec.top != null ? spec.top! + dy : null,
-                bottom: spec.bottom != null ? spec.bottom! - dy : null,
-                left: spec.left != null ? spec.left! + dx : null,
-                right: spec.right != null ? spec.right! - dx : null,
-                child: Transform.rotate(
-                  angle: rotation,
-                  child: _OrganicBlob(
-                    size: spec.size,
-                    seed: spec.seed,
-                    color: spec.color,
-                  ),
-                ),
-              );
-            },
-          );
-        }),
-      ),
-    );
-  }
-}
-
-class _OrganicBlob extends StatelessWidget {
-  final double size;
-  final int seed;
-  final Color color;
-  const _OrganicBlob({
-    required this.size,
-    required this.seed,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: CustomPaint(
-          size: Size(size, size),
-          painter: _BlobPainter(seed: seed, color: color),
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment(-0.8, -0.9),
+          radius: 1.2,
+          colors: [Color(0x1422C55E), Colors.transparent],
         ),
       ),
     );
   }
-}
-
-class _BlobPainter extends CustomPainter {
-  final int seed;
-  final Color color;
-  _BlobPainter({required this.seed, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rng = math.Random(seed * 97);
-    final center = Offset(size.width / 2, size.height / 2);
-    final baseRadius = size.width / 2;
-    const pointCount = 8;
-
-    final points = <Offset>[];
-    for (int i = 0; i < pointCount; i++) {
-      final angle = (i / pointCount) * 2 * math.pi;
-      final radiusVariance = baseRadius * (0.7 + rng.nextDouble() * 0.55);
-      points.add(
-        Offset(
-          center.dx + radiusVariance * math.cos(angle),
-          center.dy + radiusVariance * math.sin(angle),
-        ),
-      );
-    }
-
-    final path = Path();
-    final start = Offset(
-      (points[0].dx + points[points.length - 1].dx) / 2,
-      (points[0].dy + points[points.length - 1].dy) / 2,
-    );
-    path.moveTo(start.dx, start.dy);
-    for (int i = 0; i < points.length; i++) {
-      final current = points[i];
-      final next = points[(i + 1) % points.length];
-      final mid = Offset(
-        (current.dx + next.dx) / 2,
-        (current.dy + next.dy) / 2,
-      );
-      path.quadraticBezierTo(current.dx, current.dy, mid.dx, mid.dy);
-    }
-    path.close();
-
-    final paint = Paint()
-      ..shader = RadialGradient(
-        colors: [color, color.withOpacity(0)],
-        stops: const [0.0, 1.0],
-      ).createShader(Rect.fromCircle(center: center, radius: baseRadius * 1.1));
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _BlobPainter oldDelegate) => false;
 }

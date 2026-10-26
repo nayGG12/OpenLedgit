@@ -9,7 +9,9 @@ import SwiftUI
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-    let glassRegistrar = registrar(forPlugin: "NativeLiquidGlassButton")
+    guard let glassRegistrar = registrar(forPlugin: "NativeLiquidGlassButton") else {
+      fatalError("Unable to register the native Liquid Glass button.")
+    }
     glassRegistrar.register(
       NativeLiquidGlassButtonFactory(messenger: glassRegistrar.messenger()),
       withId: "open_ledger/native_liquid_glass_button"
@@ -25,7 +27,16 @@ private struct NativeLiquidGlassButtonContent: View {
   let enabled: Bool
   let onPressed: () -> Void
 
+  @ViewBuilder
   var body: some View {
+    if prominent {
+      button.buttonStyle(.glassProminent)
+    } else {
+      button.buttonStyle(.glass)
+    }
+  }
+
+  private var button: some View {
     Button(action: onPressed) {
       if let systemImage {
         Label(title, systemImage: systemImage)
@@ -35,7 +46,6 @@ private struct NativeLiquidGlassButtonContent: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    .buttonStyle(prominent ? .glassProminent : .glass)
     .disabled(!enabled)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
