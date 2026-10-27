@@ -170,7 +170,7 @@ class _AddBankAccountScreenState extends State<AddBankAccountScreen> {
 
   Widget _buildAccountOptions() {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         const Text(
           'Choisis comment ajouter ton compte',
@@ -233,7 +233,7 @@ class _AddBankAccountScreenState extends State<AddBankAccountScreen> {
 
   Widget _buildManualAccountForm() {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         Row(
           children: [
@@ -358,7 +358,7 @@ class _AddBankAccountScreenState extends State<AddBankAccountScreen> {
 
   Widget _buildResult(PlaidLinkResult result) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
       children: [
         const Text(
           'Compte(s) connecté(s) :',

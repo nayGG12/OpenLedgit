@@ -21,6 +21,7 @@ import 'services/plaid_service.dart';
 import 'services/app_lock_service.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/liquid_glass.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -315,32 +316,35 @@ class _RootNavigationState extends State<RootNavigation> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _index, children: screens),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: _onTap,
-        items: [
-          _navItem(Icons.home_outlined, Icons.home, _titles[0]),
-          _navItem(
-            Icons.account_balance_wallet_outlined,
-            Icons.account_balance_wallet,
-            _titles[1],
+      body: Stack(
+        children: [
+          IndexedStack(index: _index, children: screens),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: GlassNavBar(
+              currentIndex: _index,
+              onTap: _onTap,
+              items: [
+                GlassNavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  label: _titles[0],
+                ),
+                GlassNavItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  activeIcon: Icons.account_balance_wallet,
+                  label: _titles[1],
+                ),
+                GlassNavItem(
+                  icon: Icons.settings_outlined,
+                  activeIcon: Icons.settings,
+                  label: _titles[2],
+                ),
+              ],
+            ),
           ),
-          _navItem(Icons.settings_outlined, Icons.settings, _titles[2]),
         ],
       ),
-    );
-  }
-
-  BottomNavigationBarItem _navItem(
-    IconData outline,
-    IconData filled,
-    String label,
-  ) {
-    return BottomNavigationBarItem(
-      icon: Icon(outline),
-      activeIcon: Icon(filled),
-      label: label,
     );
   }
 }

@@ -1,182 +1,106 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-class NativeLiquidGlassButton extends StatefulWidget {
+import '../theme/app_theme.dart';
+import 'liquid_glass.dart';
+
+/// Enveloppe un bouton Material (ElevatedButton, FilledButton, OutlinedButton,
+/// TextButton, IconButton, y compris les variantes `.icon`) et l'affiche en
+/// "liquid glass".
+///
+/// Le texte et les icônes sont de vrais widgets Flutter : ils s'affichent
+/// toujours, quel que soit le bouton d'origine. Plus aucune vue native, donc
+/// plus de plantage au clic. Le nom de la classe est conservé pour ne pas avoir
+/// à modifier les écrans existants.
+class NativeLiquidGlassButton extends StatelessWidget {
   const NativeLiquidGlassButton({required this.button, super.key});
 
   final Widget button;
 
   @override
-  State<NativeLiquidGlassButton> createState() =>
-      _NativeLiquidGlassButtonState();
-}
-
-class _NativeLiquidGlassButtonState extends State<NativeLiquidGlassButton> {
-  MethodChannel? _channel;
-
-  @override
-  void didUpdateWidget(covariant NativeLiquidGlassButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _sendUpdate();
-  }
-
-  void _onPlatformViewCreated(int viewId) {
-    final channel = MethodChannel(
-      'open_ledger/native_liquid_glass_button/$viewId',
-    );
-    channel.setMethodCallHandler((call) async {
-      if (call.method == 'pressed') {
-        _buttonDetails(widget.button).onPressed?.call();
-      }
-    });
-    _channel = channel;
-    _sendUpdate();
-  }
-
-  void _sendUpdate() {
-    final channel = _channel;
-    if (channel == null) return;
-    final details = _buttonDetails(widget.button);
-    channel.invokeMethod<void>('update', {
-      'title': details.title,
-      'systemImage': details.systemImage,
-      'prominent': details.prominent,
-      'enabled': details.onPressed != null,
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform != TargetPlatform.iOS || kIsWeb) {
-      return widget.button;
+    final b = button;
+
+    if (b is IconButton) {
+      final fg = b.color ?? AppColors.textPrimary;
+      return Tooltip(
+        message: b.tooltip ?? '',
+        child: GlassButtonShell(
+          onPressed: b.onPressed,
+          radius: 22,
+          minHeight: 44,
+          minWidth: 44,
+          padding: const EdgeInsets.all(8),
+          child: IconTheme.merge(
+            data: IconThemeData(color: fg, size: b.iconSize ?? 22),
+            child: b.icon,
+          ),
+        ),
+      );
     }
 
-    final details = _buttonDetails(widget.button);
-    return SizedBox(
-      height: details.height,
-      child: UiKitView(
-        viewType: 'open_ledger/native_liquid_glass_button',
-        creationParams: {
-          'title': details.title,
-          'systemImage': details.systemImage,
-          'prominent': details.prominent,
-          'enabled': details.onPressed != null,
+    if (b is ButtonStyleButton) {
+      final style = b.style;
+      final resolvedFg = style?.foregroundColor?.resolve(const {});
+      final resolvedBg = style?.backgroundColor?.resolve(const {});
+      final resolvedSide = style?.side?.resolve(const {});
+      final isFilled = b is ElevatedButton || b is FilledButton;
+      final isText = b is TextButton;
+      final isOutlined = b is OutlinedButton;
+
+      // Couleurs : vert néon + texte sombre pour l'action principale.
+      final Color? tint = isFilled
+          ? (resolvedBg ?? AppColors.green)
+          : (isOutlined && resolvedSide != null && resolvedSide.color.a > 0
+                ? resolvedSide.color
+                : null);
+      final double tintOpacity = isFilled ? 0.88 : (tint != null ? 0.10 : 0);
+      final Color fg =
+          resolvedFg ??
+          (isFilled
+              ? AppColors.background
+              : isText
+              ? AppColors.green
+              : AppColors.textPrimary);
+
+      final enabled = b.onPressed != null;
+
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // Pleine largeur seulement si le parent l'impose (SizedBox, Expanded…).
+          final fill = constraints.hasBoundedWidth && constraints.hasTightWidth;
+          return GlassButtonShell(
+            onPressed: b.onPressed,
+            fill: fill,
+            radius: isText ? 16 : 18,
+            minHeight: isText ? 44 : 52,
+            padding: EdgeInsets.symmetric(
+              horizontal: isText ? 14 : 20,
+              vertical: 10,
+            ),
+            tint: isText ? null : tint,
+            tintOpacity: isText ? 0 : tintOpacity,
+            child: Opacity(
+              opacity: enabled ? 1 : 0.9,
+              child: DefaultTextStyle.merge(
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+                child: IconTheme.merge(
+                  data: IconThemeData(color: fg, size: 20),
+                  child: b.child ?? const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          );
         },
-        creationParamsCodec: const StandardMessageCodec(),
-        onPlatformViewCreated: _onPlatformViewCreated,
-      ),
-    );
-  }
-}
-
-class _ButtonDetails {
-  const _ButtonDetails({
-    required this.title,
-    required this.systemImage,
-    required this.prominent,
-    required this.onPressed,
-    required this.height,
-  });
-
-  final String title;
-  final String? systemImage;
-  final bool prominent;
-  final VoidCallback? onPressed;
-  final double height;
-}
-
-_ButtonDetails _buttonDetails(Widget button) {
-  if (button is IconButton) {
-    final icon = button.icon;
-    return _ButtonDetails(
-      title: button.tooltip ?? _textAndIcon(icon).$1,
-      systemImage: _systemImage(icon),
-      prominent: false,
-      onPressed: button.onPressed,
-      height: 48,
-    );
-  }
-
-  if (button is ButtonStyleButton) {
-    final textAndIcon = _textAndIcon(button.child ?? const SizedBox.shrink());
-    return _ButtonDetails(
-      title: textAndIcon.$1,
-      systemImage: textAndIcon.$2,
-      prominent: button is ElevatedButton || button is FilledButton,
-      onPressed: button.onPressed,
-      height: button is TextButton ? 44 : 52,
-    );
-  }
-
-  throw ArgumentError.value(
-    button,
-    'button',
-    'Expected an IconButton or Material button.',
-  );
-}
-
-(String, String?) _textAndIcon(Widget child) {
-  if (child is Text) {
-    return (child.data ?? child.textSpan?.toPlainText() ?? '', null);
-  }
-  if (child is Icon) {
-    return ('', _systemImage(child));
-  }
-  if (child is Row || child is Column) {
-    final children = child is Row ? child.children : (child as Column).children;
-    String? label;
-    String? image;
-    for (final item in children) {
-      final detail = _textAndIcon(item);
-      if (detail.$1.isNotEmpty) label ??= detail.$1;
-      image ??= detail.$2;
+      );
     }
-    return (label ?? '', image);
-  }
-  if (child is Padding) {
-    return _textAndIcon(child.child ?? const SizedBox.shrink());
-  }
-  if (child is Center) {
-    return _textAndIcon(child.child ?? const SizedBox.shrink());
-  }
-  if (child is SizedBox && child.child != null) {
-    return _textAndIcon(child.child!);
-  }
-  if (child is IconTheme) {
-    return _textAndIcon(child.child);
-  }
-  if (child is CircularProgressIndicator) return ('Chargement…', null);
-  return ('', null);
-}
 
-String? _systemImage(Widget icon) {
-  if (icon is! Icon) return null;
+    // Autre widget : on l'affiche tel quel plutôt que de planter.
+    return b;
+  }
 
-  final codePoint = icon.icon?.codePoint;
-  if (codePoint == Icons.add.codePoint) return 'plus';
-  if (codePoint == Icons.link.codePoint) return 'link';
-  if (codePoint == Icons.delete.codePoint ||
-      codePoint == Icons.delete_outline.codePoint) {
-    return 'trash';
-  }
-  if (codePoint == Icons.edit.codePoint ||
-      codePoint == Icons.edit_outlined.codePoint) {
-    return 'pencil';
-  }
-  if (codePoint == Icons.arrow_back.codePoint ||
-      codePoint == Icons.arrow_back_ios_new.codePoint) {
-    return 'chevron.left';
-  }
-  if (codePoint == Icons.fingerprint.codePoint) return 'touchid';
-  if (codePoint == Icons.logout.codePoint) {
-    return 'rectangle.portrait.and.arrow.right';
-  }
-  if (codePoint == Icons.download_outlined.codePoint) {
-    return 'square.and.arrow.down';
-  }
-  if (codePoint == Icons.upload_outlined.codePoint) {
-    return 'square.and.arrow.up';
-  }
-  return null;
 }

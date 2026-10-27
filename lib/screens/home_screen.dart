@@ -360,7 +360,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('OPENLEDGER')),
-      floatingActionButton: Column(
+      floatingActionButton: Padding(
+        // Remonte le bouton + pour qu'il ne passe pas sous la nav bar en verre.
+        padding: const EdgeInsets.only(bottom: 72),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (_isFabExpanded) ...[
@@ -393,6 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+      ),
       body: Stack(
         children: [
           const Positioned.fill(child: _HomeBackdrop()),
@@ -405,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   backgroundColor: AppColors.card,
                   onRefresh: _load,
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 130),
                     children: [
                       _HomeContent(
                         child: Text(
@@ -557,7 +561,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                               ),
-                              if (_hasActiveFilters)
+                              if (_hasActiveFilters) ...[
+                                const SizedBox(width: 12),
                                 NativeLiquidGlassButton(
                                   button: TextButton(
                                     onPressed: () => setState(() {
@@ -570,6 +575,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     child: const Text('Réinitialiser'),
                                   ),
                                 ),
+                              ],
                             ],
                           ),
                         ),
